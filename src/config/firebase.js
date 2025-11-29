@@ -6,7 +6,7 @@ import { getFirestore } from "firebase/firestore"; // For the Database
 
 // --- PASTE YOUR KEYS FROM FIREBASE CONSOLE BELOW ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBO2blhXy3nScSIwNFdTeAGWqC90A-Jc-A",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: "autoprimeauction.firebaseapp.com",
   projectId: "autoprimeauction",
   storageBucket: "autoprimeauction.firebasestorage.app",
