@@ -343,12 +343,41 @@ const HomeScreen = ({ navigation }) => {
                 isBold
               />
 
-              {/* --- NEW HIGHLIGHTED "SELL CAR" BUTTON --- */}
+              {/* --- NEW: Get Your Car Inspected (Standard List Item) --- */}
+              <MenuItem
+                icon="checkbox-outline"
+                label="Get Your Car Inspected"
+                onPress={() => {
+                  setMenuVisible(false);
+                  // Navigate to inspection screen if it exists later
+                }}
+                isBold
+              />
+
+              {/* --- NEW: Register for Auction Button (Above Sell Car) --- */}
+              <TouchableOpacity
+                style={styles.registerAuctionButton}
+                onPress={() => {
+                  setMenuVisible(false);
+                  // Add logic for Auction Registration later
+                }}
+              >
+                <Ionicons name="gavel" size={22} color="#fff" />
+                <Text style={styles.sellCarText}>Register for Auction</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={20}
+                  color="#fff"
+                  style={{ marginLeft: 10 }}
+                />
+              </TouchableOpacity>
+
+              {/* --- HIGHLIGHTED "SELL CAR" BUTTON --- */}
               <TouchableOpacity
                 style={styles.sellCarButton}
                 onPress={() => {
                   setMenuVisible(false);
-                  navigation.navigate("SellCar"); // <--- Navigate to the new screen
+                  navigation.navigate("SellCar");
                 }}
               >
                 <Ionicons name="car-sport" size={22} color="#fff" />
@@ -360,7 +389,6 @@ const HomeScreen = ({ navigation }) => {
                   style={{ marginLeft: 10 }}
                 />
               </TouchableOpacity>
-              {/* ----------------------------------------- */}
             </View>
 
             <View style={styles.menuBottomContainer}>
@@ -759,9 +787,10 @@ const styles = StyleSheet.create({
   menuText: { fontSize: 18, color: colors.primary, fontWeight: "500" },
   menuTextBold: { fontWeight: "bold" },
 
-  // --- NEW HIGHLIGHTED SELL BUTTON ---
-  sellCarButton: {
-    marginTop: 20,
+  // --- BUTTON STYLES ---
+  // New style for Auction Register, slightly margin-ed to separate from bottom one
+  registerAuctionButton: {
+    marginTop: 15,
     backgroundColor: colors.primary, // Navy Blue
     flexDirection: "row",
     alignItems: "center",
@@ -769,6 +798,22 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 30, // Pill shape
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  // Existing style for Sell Car (now with smaller top margin to stack nicely)
+  sellCarButton: {
+    marginTop: 10,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 30,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
