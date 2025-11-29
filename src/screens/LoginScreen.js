@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   SafeAreaView,
   ScrollView,
@@ -7,17 +9,86 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from "react-native"; // <--- Added Image
+} from "react-native";
+// 1. Added sendPasswordResetEmail to imports
+import {
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
+import { auth } from "../config/firebase";
+
 import CustomInput from "../components/CustomInput";
 import colors from "../constants/colors";
 
 const LoginScreen = ({ navigation }) => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const onLoginPressed = () => {
-    console.log("Login with:", username, password);
-    navigation.navigate("Home");
+  const onLoginPressed = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please enter both email and password.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      console.log("Logged in successfully:", userCredential.user.email);
+      setLoading(false);
+      navigation.navigate("Home");
+    } catch (error) {
+      setLoading(false);
+      console.error("Login Error:", error.code);
+
+      let message = "Something went wrong.";
+      if (
+        error.code === "auth/invalid-credential" ||
+        error.code === "auth/user-not-found" ||
+        error.code === "auth/wrong-password"
+      ) {
+        message = "Invalid email or password.";
+      } else if (error.code === "auth/too-many-requests") {
+        message = "Too many failed attempts. Try again later.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "Please enter a valid email address.";
+      }
+
+      Alert.alert("Login Failed", message);
+    }
+  };
+
+  // 2. New Forgot Password Handler
+  const onForgotPasswordPressed = async () => {
+    if (!email) {
+      Alert.alert(
+        "Missing Email",
+        "Please enter your email address first so we can send you a reset link."
+      );
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert(
+        "Email Sent",
+        "A password reset link has been sent to your email."
+      );
+    } catch (error) {
+      console.error("Forgot Password Error:", error.code);
+      let message = error.message;
+      if (error.code === "auth/user-not-found") {
+        message = "No user found with this email.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "That email address looks invalid.";
+      }
+      Alert.alert("Error", message);
+    }
   };
 
   const onSignUpPressed = () => {
@@ -30,25 +101,23 @@ const LoginScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContainer}
       >
-        {/* LOGO SECTION */}
         <View style={styles.logoContainer}>
-          {/* --- REPLACED ICON WITH IMAGE --- */}
           <Image
             source={require("../assets/apaHeaderLogo.png")}
             style={styles.logoImage}
             resizeMode="contain"
           />
-          {/* Removed the "APA" text here because the logo has it */}
         </View>
 
         <Text style={styles.title}>Login</Text>
         <Text style={styles.subtitle}>Welcome to Auto Prime Auction</Text>
 
         <CustomInput
-          iconName="person-outline"
-          placeholder="Username"
-          value={username}
-          setValue={setUsername}
+          iconName="mail-outline"
+          placeholder="Email"
+          value={email}
+          setValue={setEmail}
+          keyboardType="email-address"
         />
 
         <CustomInput
@@ -59,12 +128,24 @@ const LoginScreen = ({ navigation }) => {
           secureTextEntry={true}
         />
 
-        <TouchableOpacity style={styles.forgotPasswordContainer}>
+        {/* 3. Connected the onPress event */}
+        <TouchableOpacity
+          style={styles.forgotPasswordContainer}
+          onPress={onForgotPasswordPressed}
+        >
           <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.loginButton} onPress={onLoginPressed}>
-          <Text style={styles.loginButtonText}>Login</Text>
+        <TouchableOpacity
+          style={styles.loginButton}
+          onPress={onLoginPressed}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.loginButtonText}>Login</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.footerContainer}>
@@ -90,11 +171,10 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 20, // Reduced slightly since image is taller
+    marginBottom: 20,
   },
-  // --- NEW LOGO STYLE ---
   logoImage: {
-    width: 120, // Slightly smaller for Login screen
+    width: 120,
     height: 80,
     marginBottom: 10,
   },

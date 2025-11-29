@@ -1,6 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { createUserWithEmailAndPassword } from "firebase/auth"; // Import Auth function
+import { doc, setDoc } from "firebase/firestore"; // Import Database functions
 import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   SafeAreaView,
   ScrollView,
@@ -8,7 +12,9 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from "react-native"; // <--- Added Image
+} from "react-native";
+import { auth, db } from "../config/firebase"; // Import our configured Firebase
+
 import CustomInput from "../components/CustomInput";
 import colors from "../constants/colors";
 
@@ -18,8 +24,59 @@ const SignupScreen = ({ navigation }) => {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
 
-  const onRegisterPressed = () => {
-    navigation.navigate("Verification");
+  // New state to show a loading spinner
+  const [loading, setLoading] = useState(false);
+
+  const onRegisterPressed = async () => {
+    // 1. Basic Validation
+    if (!fullName || !email || !phone || !password) {
+      Alert.alert("Error", "Please fill in all fields.");
+      return;
+    }
+
+    setLoading(true); // Start spinning
+
+    try {
+      // 2. Create User in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+
+      // 3. Save Extra Data (Name, Phone) to Firestore Database
+      // We use the 'uid' (User ID) from Auth to link the database record
+      await setDoc(doc(db, "users", user.uid), {
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        uid: user.uid,
+        createdAt: new Date(),
+        role: "buyer", // Default role
+      });
+
+      console.log("User Account Created:", user.uid);
+      setLoading(false); // Stop spinning
+
+      // 4. Navigate to Verification (or Home)
+      // For now, we keep your flow going to Verification
+      Alert.alert("Success", "Account created successfully!", [
+        { text: "OK", onPress: () => navigation.navigate("Verification") },
+      ]);
+    } catch (error) {
+      setLoading(false); // Stop spinning on error
+      console.error("Signup Error:", error);
+
+      // Show a friendly error message
+      let message = error.message;
+      if (message.includes("email-already-in-use")) {
+        message = "This email is already registered.";
+      } else if (message.includes("weak-password")) {
+        message = "Password should be at least 6 characters.";
+      }
+      Alert.alert("Registration Failed", message);
+    }
   };
 
   const onSignInPressed = () => {
@@ -34,7 +91,6 @@ const SignupScreen = ({ navigation }) => {
       >
         {/* LOGO SECTION */}
         <View style={styles.logoContainer}>
-          {/* --- REPLACED ICON WITH IMAGE --- */}
           <Image
             source={require("../assets/apaHeaderLogo.png")}
             style={styles.logoImage}
@@ -80,8 +136,13 @@ const SignupScreen = ({ navigation }) => {
         <TouchableOpacity
           style={styles.registerButton}
           onPress={onRegisterPressed}
+          disabled={loading} // Disable button while loading
         >
-          <Text style={styles.registerButtonText}>Sign Up</Text>
+          {loading ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.registerButtonText}>Sign Up</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.dividerContainer}>
@@ -138,7 +199,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  // --- NEW LOGO STYLE ---
   logoImage: {
     width: 120,
     height: 80,
