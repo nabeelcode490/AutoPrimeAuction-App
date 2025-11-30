@@ -2,41 +2,57 @@ export const liveAuctions = [
   {
     id: "1",
     name: "Ford Mustang 1969",
+    model: "Mach 1 Fastback",
     price: "PKR 18,00,000",
     image:
       "https://images.unsplash.com/photo-1584345604476-8ec5e12e42dd?auto=format&fit=crop&w=800&q=80",
+    // Added Dummy Inspection Sheet URL
+    inspectionSheet:
+      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
   },
   {
     id: "2",
     name: "Toyota Supra MK4",
+    model: "Twin Turbo",
     price: "PKR 45,00,000",
     image:
       "https://images.unsplash.com/photo-1605515298946-d0bfdfdbdd6d?auto=format&fit=crop&w=800&q=80",
+    inspectionSheet:
+      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
   },
   {
     id: "3",
     name: "Honda Civic RS",
+    model: "Turbo 1.5",
     price: "PKR 65,00,000",
     image:
       "https://images.unsplash.com/photo-1606016159991-dfe4f2746ad5?auto=format&fit=crop&w=800&q=80",
+    inspectionSheet:
+      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
   },
   {
     id: "4",
     name: "Audi A5 Sportback",
+    model: "S-Line",
     price: "PKR 1,20,00,000",
     image:
       "https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?auto=format&fit=crop&w=800&q=80",
+    inspectionSheet:
+      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
   },
   {
     id: "5",
-    name: "Toyota Fortuner Legender",
+    name: "Toyota Fortuner",
+    model: "Legender 4x4",
     price: "PKR 1,80,00,000",
     image:
       "https://images.unsplash.com/photo-1631751187560-59d7305c5416?auto=format&fit=crop&w=800&q=80",
+    inspectionSheet:
+      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
   },
 ];
@@ -79,7 +95,6 @@ export const scheduledAuctions = [
     status: "Scheduled",
   },
 ];
-// ... existing liveAuctions and scheduledAuctions ...
 
 export const forSaleCars = [
   {
@@ -92,16 +107,15 @@ export const forSaleCars = [
     price: "PKR 1,15,00,000",
     image:
       "https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&w=800&q=80",
-    // NEW: Extra images for the detail page
     gallery: [
-      "https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&w=800&q=80", // Same as main
-      "https://images.unsplash.com/photo-1536700503339-1e4b06520771?auto=format&fit=crop&w=800&q=80", // Interior
-      "https://images.unsplash.com/photo-1562911791-c7a97b729ec5?auto=format&fit=crop&w=800&q=80", // Back view
+      "https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1536700503339-1e4b06520771?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1562911791-c7a97b729ec5?auto=format&fit=crop&w=800&q=80",
     ],
     rating: 4.5,
     description:
       "Sleek design, advanced Autopilot, premium interior & smooth electric performance. 95% battery health, fully functional features & regular updates.",
-    verified: true, // Shows the badge
+    verified: true,
     isFeatured: true,
   },
   {
@@ -142,7 +156,7 @@ export const forSaleCars = [
     ],
     rating: 4.2,
     description: "Economical city car with sporty looks and CVT transmission.",
-    verified: false, // No badge
+    verified: false,
     isFeatured: false,
   },
   {

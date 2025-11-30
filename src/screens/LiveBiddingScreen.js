@@ -26,22 +26,23 @@ const initialBids = [
 ];
 
 const LiveBiddingScreen = ({ route, navigation }) => {
-  // Get car data (or use defaults if testing without navigation)
-  const item = route.params?.item || {
-    name: "Toyota Hilux",
-    model: "2021",
-    price: "Rs. 1,800,000",
-    image:
-      "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=800&q=80",
+  // Get car data and MODE (view/bid)
+  const { item, mode } = route.params || {};
+
+  // Default values if data is missing
+  const currentCar = item || {
+    name: "Unknown Car",
+    model: "N/A",
+    price: "Rs. 0",
+    image: "https://via.placeholder.com/150",
+    inspectionSheet: "https://via.placeholder.com/300x400",
   };
 
   // --- STATE ---
-  const [currentBid, setCurrentBid] = useState(1800000); // Numeric value for logic
+  const [currentBid, setCurrentBid] = useState(1800000);
   const [bidInput, setBidInput] = useState("");
-  const [historyVisible, setHistoryVisible] = useState(false); // For Modal
+  const [historyVisible, setHistoryVisible] = useState(false);
   const [bidHistory, setBidHistory] = useState(initialBids);
-
-  // Timer State (Starts at 2 hours 45 min)
   const [timeLeft, setTimeLeft] = useState(9900);
 
   // --- TIMER LOGIC ---
@@ -52,7 +53,6 @@ const LiveBiddingScreen = ({ route, navigation }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Convert seconds to HH:MM:SS
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -72,11 +72,7 @@ const LiveBiddingScreen = ({ route, navigation }) => {
       );
       return;
     }
-
-    // 1. Update Current Bid
     setCurrentBid(numericAmount);
-
-    // 2. Add to History
     const newBid = {
       id: Math.random().toString(),
       user: "You",
@@ -87,8 +83,6 @@ const LiveBiddingScreen = ({ route, navigation }) => {
       }),
     };
     setBidHistory([newBid, ...bidHistory]);
-
-    // 3. Reset Input
     setBidInput("");
     Alert.alert("Success", "Bid Placed Successfully!");
   };
@@ -113,21 +107,20 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color={colors.black} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Live Auction!</Text>
+            <Text style={styles.headerTitle}>Live Auction</Text>
             <View style={{ width: 24 }} />
           </View>
 
           {/* --- CAR SUMMARY --- */}
           <View style={styles.carSummaryCard}>
-            <Image source={{ uri: item.image }} style={styles.carThumb} />
+            <Image source={{ uri: currentCar.image }} style={styles.carThumb} />
             <View style={styles.carInfo}>
               <Text style={styles.carLabel}>
-                Car: <Text style={styles.carValue}>{item.name}</Text>
+                Car: <Text style={styles.carValue}>{currentCar.name}</Text>
               </Text>
               <Text style={styles.carLabel}>
-                Model: <Text style={styles.carValue}>{item.model}</Text>
+                Model: <Text style={styles.carValue}>{currentCar.model}</Text>
               </Text>
-              {/* Digital Timer Display */}
               <View style={styles.timerContainer}>
                 <Ionicons name="time-outline" size={16} color="#D32F2F" />
                 <Text style={styles.timerText}>
@@ -137,24 +130,19 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             </View>
           </View>
 
-          {/* --- INSPECTION SHEET (Center Image) --- */}
+          {/* --- INSPECTION SHEET (Uses dummy data now) --- */}
           <View style={styles.inspectionContainer}>
-            {/* Using a placeholder diagram image */}
             <Image
-              source={{
-                uri: "https://www.researchgate.net/profile/Sina-Peighambardoust/publication/327063386/figure/fig3/AS:660338821705737@1534448373965/Schematic-representation-of-car-body-parts-showing-positions-of-A-pillars-B-pillars.png",
-              }}
+              source={{ uri: currentCar.inspectionSheet }}
               style={styles.inspectionImage}
               resizeMode="contain"
             />
 
-            {/* Overlay for "View Full Sheet" */}
             <TouchableOpacity style={styles.fullSheetLink}>
               <Text style={styles.linkText}>View Full Inspection Sheet</Text>
               <Ionicons name="document-text" size={20} color={colors.black} />
             </TouchableOpacity>
 
-            {/* LEGEND */}
             <View style={styles.legendContainer}>
               <View style={styles.legendRow}>
                 <Text style={styles.legendItem}>
@@ -184,13 +172,11 @@ const LiveBiddingScreen = ({ route, navigation }) => {
                   Rs. {currentBid.toLocaleString()}
                 </Text>
               </View>
-              {/* Visual Clock Icon (Dynamic Timer is above in summary for better visibility) */}
               <View style={styles.clockCircle}>
                 <Ionicons name="stopwatch" size={24} color={colors.primary} />
               </View>
             </View>
 
-            {/* HISTORY TRIGGER */}
             <TouchableOpacity
               style={styles.historyButton}
               onPress={() => setHistoryVisible(true)}
@@ -202,61 +188,71 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* --- BID CONTROLS --- */}
-          <View style={styles.controlsContainer}>
-            <Text style={styles.controlLabel}>Increase Price</Text>
+          {/* --- BID CONTROLS (CONDITIONAL RENDER) --- */}
+          {/* ONLY show this section if mode is 'bid' */}
+          {mode === "bid" && (
+            <>
+              <View style={styles.controlsContainer}>
+                <Text style={styles.controlLabel}>Increase Price</Text>
 
-            {/* Input & Plus Button */}
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.bidInput}
-                placeholder="Enter Amount"
-                keyboardType="numeric"
-                value={bidInput}
-                onChangeText={setBidInput}
-              />
+                <View style={styles.inputRow}>
+                  <TextInput
+                    style={styles.bidInput}
+                    placeholder="Enter Amount"
+                    keyboardType="numeric"
+                    value={bidInput}
+                    onChangeText={setBidInput}
+                  />
+                  <TouchableOpacity
+                    style={styles.plusButton}
+                    onPress={() => placeBid(bidInput)}
+                  >
+                    <Ionicons name="add" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.quickChipsRow}>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => handleQuickAdd(10000)}
+                  >
+                    <Text style={styles.chipText}>+10k</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => handleQuickAdd(25000)}
+                  >
+                    <Text style={styles.chipText}>+25k</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => handleQuickAdd(50000)}
+                  >
+                    <Text style={styles.chipText}>+50k</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <TouchableOpacity
-                style={styles.plusButton}
+                style={styles.placeBidButton}
                 onPress={() => placeBid(bidInput)}
               >
-                <Ionicons name="add" size={24} color="#fff" />
+                <Text style={styles.placeBidText}>Place Bid</Text>
               </TouchableOpacity>
-            </View>
+            </>
+          )}
 
-            {/* Quick Add Chips (New Feature) */}
-            <View style={styles.quickChipsRow}>
-              <TouchableOpacity
-                style={styles.chip}
-                onPress={() => handleQuickAdd(10000)}
-              >
-                <Text style={styles.chipText}>+10k</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.chip}
-                onPress={() => handleQuickAdd(25000)}
-              >
-                <Text style={styles.chipText}>+25k</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.chip}
-                onPress={() => handleQuickAdd(50000)}
-              >
-                <Text style={styles.chipText}>+50k</Text>
-              </TouchableOpacity>
+          {mode === "view" && (
+            <View style={{ padding: 20, alignItems: "center" }}>
+              <Text style={{ color: colors.grey, fontStyle: "italic" }}>
+                You are in View Only mode. Join the Auction to place bids.
+              </Text>
             </View>
-          </View>
-
-          {/* --- MAIN ACTION BUTTON --- */}
-          <TouchableOpacity
-            style={styles.placeBidButton}
-            onPress={() => placeBid(bidInput)}
-          >
-            <Text style={styles.placeBidText}>Place Bid</Text>
-          </TouchableOpacity>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* --- BID HISTORY POPUP (MODAL) --- */}
+      {/* --- HISTORY MODAL --- */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -294,7 +290,6 @@ const LiveBiddingScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
-
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -303,8 +298,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerTitle: { fontSize: 20, fontWeight: "bold", color: colors.black },
-
-  // CAR SUMMARY
   carSummaryCard: {
     flexDirection: "row",
     padding: 15,
@@ -325,15 +318,8 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 14,
   },
-
-  // INSPECTION
   inspectionContainer: { margin: 20, alignItems: "center" },
-  inspectionImage: {
-    width: "100%",
-    height: 200,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 10,
-  },
+  inspectionImage: { width: "100%", height: 350, borderRadius: 10 }, // Increased height for document visibility
   fullSheetLink: {
     flexDirection: "row",
     alignItems: "center",
@@ -350,8 +336,6 @@ const styles = StyleSheet.create({
   },
   legendItem: { fontSize: 14, color: colors.grey, width: "48%" },
   bold: { fontWeight: "bold", color: colors.black },
-
-  // DASHBOARD
   bidDashboard: { marginHorizontal: 20 },
   currentBidBar: {
     backgroundColor: colors.primary,
@@ -382,8 +366,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginRight: 5,
   },
-
-  // CONTROLS
   controlsContainer: {
     padding: 20,
     backgroundColor: "#EAF4F8",
@@ -409,8 +391,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // CHIPS
   quickChipsRow: {
     flexDirection: "row",
     marginTop: 15,
@@ -425,8 +405,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   chipText: { color: colors.primary, fontWeight: "bold" },
-
-  // ACTION BUTTON
   placeBidButton: {
     backgroundColor: colors.primary,
     margin: 20,
@@ -435,8 +413,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   placeBidText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
-
-  // MODAL
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

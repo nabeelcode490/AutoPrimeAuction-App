@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth"; // Import auth methods
+import { useEffect, useState } from "react";
 import {
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -13,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { auth } from "../config/firebase"; // Import auth instance
 import colors from "../constants/colors";
 import { forSaleCars } from "../data/carData";
 
@@ -53,6 +56,17 @@ const HomeScreen = ({ navigation }) => {
   const [selectedBrand, setSelectedBrand] = useState("All");
   const [locationInput, setLocationInput] = useState("");
 
+  // --- USER AUTH STATE ---
+  const [user, setUser] = useState(null);
+
+  // Check Login Status on Load
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return unsubscribe; // Cleanup listener
+  }, []);
+
   const [displayedCars, setDisplayedCars] = useState(forSaleCars);
 
   // --- FILTER LOGIC ---
@@ -75,6 +89,40 @@ const HomeScreen = ({ navigation }) => {
 
   const handleSeeMore = () => {
     setVisibleCarsCount((prev) => prev + 2);
+  };
+
+  // --- HANDLER: Inspection Request ---
+  const handleInspectionRequest = () => {
+    setMenuVisible(false);
+    // Placeholder for backend
+    Alert.alert(
+      "Thank You!",
+      "Our team will contact you soon to confirm your car's inspection and will link you to our representative."
+    );
+  };
+
+  // --- HANDLER: Logout ---
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await signOut(auth);
+            setMenuVisible(false);
+            // Reset to Welcome Screen to prevent back navigation
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Welcome" }],
+            });
+          } catch (error) {
+            console.error("Logout Error:", error);
+          }
+        },
+      },
+    ]);
   };
 
   // --- RENDER HELPERS ---
@@ -160,13 +208,30 @@ const HomeScreen = ({ navigation }) => {
             style={styles.headerLogo}
             resizeMode="contain"
           />
-          <TouchableOpacity>
-            <Ionicons
-              name="notifications-outline"
-              size={28}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
+
+          {/* --- RIGHT SIDE HEADER LOGIC --- */}
+          {user ? (
+            <TouchableOpacity>
+              <Ionicons
+                name="notifications-outline"
+                size={28}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          ) : (
+            // GUEST MODE: Show "Sign In"
+            <TouchableOpacity
+              style={styles.signInHeaderButton}
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.signInHeaderText}>Sign In</Text>
+              <Ionicons
+                name="log-in-outline"
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* SEARCH BAR */}
@@ -338,31 +403,45 @@ const HomeScreen = ({ navigation }) => {
                 icon="person-outline"
                 label="Profile"
                 onPress={() => {
-                  setMenuVisible(false);
+                  if (user) {
+                    // Logic: User is Logged In -> Go to Profile
+                    setMenuVisible(false);
+                    navigation.navigate("Profile");
+                  } else {
+                    // Logic: User is Guest -> Prompt to Login
+                    Alert.alert(
+                      "Login Required",
+                      "Please login to view your profile and manage your listings.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Login",
+                          onPress: () => {
+                            setMenuVisible(false);
+                            navigation.navigate("Login");
+                          },
+                        },
+                      ]
+                    );
+                  }
                 }}
                 isBold
               />
 
-              {/* --- NEW: Get Your Car Inspected (Standard List Item) --- */}
               <MenuItem
                 icon="checkbox-outline"
                 label="Get Your Car Inspected"
-                onPress={() => {
-                  setMenuVisible(false);
-                  // Navigate to inspection screen if it exists later
-                }}
+                onPress={handleInspectionRequest}
                 isBold
               />
 
-              {/* --- NEW: Register for Auction Button (Above Sell Car) --- */}
               <TouchableOpacity
                 style={styles.registerAuctionButton}
                 onPress={() => {
                   setMenuVisible(false);
-                  // Add logic for Auction Registration later
+                  navigation.navigate("AuctionRegistration");
                 }}
               >
-                <Ionicons name="gavel" size={22} color="#fff" />
                 <Text style={styles.sellCarText}>Register for Auction</Text>
                 <Ionicons
                   name="arrow-forward"
@@ -372,7 +451,6 @@ const HomeScreen = ({ navigation }) => {
                 />
               </TouchableOpacity>
 
-              {/* --- HIGHLIGHTED "SELL CAR" BUTTON --- */}
               <TouchableOpacity
                 style={styles.sellCarButton}
                 onPress={() => {
@@ -395,19 +473,41 @@ const HomeScreen = ({ navigation }) => {
               <MenuItem
                 icon="thumbs-up-outline"
                 label="Feedback"
-                onPress={() => {}}
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("Feedback"); // <--- Linked
+                }}
               />
               <MenuItem
                 icon="mail-outline"
                 label="Contact Us"
-                onPress={() => {}}
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("ContactUs"); // <--- Linked
+                }}
               />
+
+              {/* --- LOGOUT BUTTON (Only if User is Logged In) --- */}
+              {user && (
+                <TouchableOpacity
+                  style={styles.logoutButton}
+                  onPress={handleLogout}
+                >
+                  <Ionicons
+                    name="log-out-outline"
+                    size={24}
+                    color="#D32F2F"
+                    style={{ marginRight: 15 }}
+                  />
+                  <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
-      {/* --- FILTER POPUP MODAL (Same as before) --- */}
+      {/* --- FILTER POPUP MODAL --- */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -501,6 +601,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerLogo: { width: 80, height: 40 },
+
+  // --- SIGN IN HEADER STYLES ---
+  signInHeaderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 5,
+  },
+  signInHeaderText: {
+    color: colors.primary,
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+
   searchContainer: {
     flexDirection: "row",
     paddingHorizontal: 20,
@@ -788,7 +902,6 @@ const styles = StyleSheet.create({
   menuTextBold: { fontWeight: "bold" },
 
   // --- BUTTON STYLES ---
-  // New style for Auction Register, slightly margin-ed to separate from bottom one
   registerAuctionButton: {
     marginTop: 15,
     backgroundColor: colors.primary, // Navy Blue
@@ -804,7 +917,6 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 5,
   },
-  // Existing style for Sell Car (now with smaller top margin to stack nicely)
   sellCarButton: {
     marginTop: 10,
     backgroundColor: colors.primary,
@@ -832,6 +944,18 @@ const styles = StyleSheet.create({
     borderTopColor: "#BDC3C7",
     paddingTop: 20,
     marginBottom: 20,
+  },
+  // --- LOGOUT BUTTON ---
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  logoutText: {
+    fontSize: 18,
+    color: "#D32F2F", // Red Color
+    fontWeight: "bold",
   },
 });
 

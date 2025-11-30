@@ -2,12 +2,16 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 // Import your screens here
+import AuctionRegistrationScreen from "../screens/AuctionRegistrationScreen";
 import AuctionsScreen from "../screens/AuctionsScreen"; // The OLD Home (renamed)
 import CarDetailsScreen from "../screens/CarDetailsScreen"; // <--- Import
+import ContactUsScreen from "../screens/ContactUsScreen";
+import FeedbackScreen from "../screens/FeedbackScreen";
 import HomeScreen from "../screens/HomeScreen"; // The NEW Home
 import LiveBiddingScreen from "../screens/LiveBiddingScreen"; // <--- Import
 import LoginScreen from "../screens/LoginScreen"; // <-- Added
 import PriceEvaluationScreen from "../screens/PriceEvaluationScreen";
+import ProfileScreen from "../screens/ProfileScreen";
 import SellCarScreen from "../screens/SellCarScreen"; // <--- Import
 import SignupScreen from "../screens/SignupScreen"; // <--
 import VerificationScreen from "../screens/VerificationScreen"; // <--- 1. Import this
@@ -38,6 +42,13 @@ const AppNavigator = () => {
           name="PriceEvaluation"
           component={PriceEvaluationScreen}
         />
+        <Stack.Screen
+          name="AuctionRegistration"
+          component={AuctionRegistrationScreen}
+        />
+        <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="Feedback" component={FeedbackScreen} />
+        <Stack.Screen name="ContactUs" component={ContactUsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
