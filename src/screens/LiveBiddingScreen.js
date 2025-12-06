@@ -13,84 +13,139 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  doc,
+  onSnapshot,
+  collection,
+  query,
+  orderBy,
+  limit,
+} from "firebase/firestore";
+import { auth, db } from "../config/firebase";
 import colors from "../constants/colors";
 
-// --- DUMMY BID HISTORY DATA ---
-const initialBids = [
-  { id: "1", user: "Ali Khan", amount: "Rs. 18,10,000", time: "10:45 AM" },
-  { id: "2", user: "Usman123", amount: "Rs. 18,05,000", time: "10:44 AM" },
-  { id: "3", user: "CarDealer_LHR", amount: "Rs. 18,00,000", time: "10:42 AM" },
-  { id: "4", user: "Saad Ahmed", amount: "Rs. 17,90,000", time: "10:40 AM" },
-];
+// TODO: Ensure this matches your laptop IP
+const BACKEND_URL = "http://192.168.1.23:3000";
 
 const LiveBiddingScreen = ({ route, navigation }) => {
-  // Get car data and MODE (view/bid)
   const { item, mode } = route.params || {};
+  const carId = item?.id || item?.carId;
+  const initialPrice = item?.price
+    ? String(item.price).replace(/[^0-9]/g, "")
+    : "0";
 
-  // Default values if data is missing
-  const currentCar = item || {
-    name: "Unknown Car",
-    model: "N/A",
-    price: "Rs. 0",
-    image: "https://via.placeholder.com/150",
-    inspectionSheet: "https://via.placeholder.com/300x400",
-  };
-
-  // --- STATE ---
-  const [currentBid, setCurrentBid] = useState(1800000);
+  const [carData, setCarData] = useState(item || {});
+  const [currentBid, setCurrentBid] = useState(Number(initialPrice));
   const [bidInput, setBidInput] = useState("");
+  const [bidHistory, setBidHistory] = useState([]);
   const [historyVisible, setHistoryVisible] = useState(false);
-  const [bidHistory, setBidHistory] = useState(initialBids);
-  const [timeLeft, setTimeLeft] = useState(9900);
+  const [zoomVisible, setZoomVisible] = useState(false);
+  const [timeLeft, setTimeLeft] = useState("Waiting...");
+  const [loading, setLoading] = useState(false);
 
-  // --- TIMER LOGIC ---
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    if (!carId) return;
 
-  const formatTime = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h < 10 ? "0" + h : h}:${m < 10 ? "0" + m : m}:${
-      s < 10 ? "0" + s : s
-    }`;
-  };
+    const unsubCar = onSnapshot(doc(db, "cars", carId), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCarData(data);
+        if (data.currentBid) setCurrentBid(Number(data.currentBid));
+        else if (data.auctionParams?.basePrice)
+          setCurrentBid(Number(data.auctionParams.basePrice));
 
-  // --- BIDDING LOGIC ---
-  const placeBid = (amount) => {
-    const numericAmount = parseInt(amount);
-    if (!numericAmount || numericAmount <= currentBid) {
-      Alert.alert(
-        "Invalid Bid",
-        "Your bid must be higher than the current ongoing bid."
-      );
+        // Timer Logic
+        if (data.auctionParams?.endTime) {
+          const end = data.auctionParams.endTime.toDate
+            ? data.auctionParams.endTime.toDate()
+            : new Date(data.auctionParams.endTime);
+          const now = new Date();
+          const diff = Math.floor((end - now) / 1000);
+          if (diff > 0) {
+            const h = Math.floor(diff / 3600);
+            const m = Math.floor((diff % 3600) / 60);
+            const s = diff % 60;
+            setTimeLeft(`${h}h ${m}m ${s}s`);
+          } else {
+            setTimeLeft("Auction Ended");
+          }
+        }
+      }
+    });
+
+    const historyRef = collection(db, "cars", carId, "bidHistory");
+    const q = query(historyRef, orderBy("timestamp", "desc"), limit(10));
+    const unsubHistory = onSnapshot(q, (snapshot) => {
+      const bids = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        time: doc.data().timestamp?.toDate
+          ? doc.data().timestamp.toDate().toLocaleTimeString()
+          : "Just now",
+      }));
+      setBidHistory(bids);
+    });
+
+    return () => {
+      unsubCar();
+      unsubHistory();
+    };
+  }, [carId]);
+
+  const handlePlaceBid = async (amount) => {
+    if (!auth.currentUser) {
+      Alert.alert("Access Denied", "Please log in.");
       return;
     }
-    setCurrentBid(numericAmount);
-    const newBid = {
-      id: Math.random().toString(),
-      user: "You",
-      amount: `Rs. ${numericAmount.toLocaleString()}`,
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-    setBidHistory([newBid, ...bidHistory]);
-    setBidInput("");
-    Alert.alert("Success", "Bid Placed Successfully!");
+    if (!amount) {
+      Alert.alert("Error", "Enter amount.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/place-bid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carId,
+          userId: auth.currentUser.uid,
+          bidAmount: amount,
+        }),
+      });
+      const result = await response.json();
+      setLoading(false);
+      if (result.success) {
+        Alert.alert("Success", "Bid Placed!");
+        setBidInput("");
+      } else {
+        Alert.alert("Bid Failed", result.message);
+      }
+    } catch (error) {
+      setLoading(false);
+      Alert.alert("Error", "Connection failed.");
+    }
   };
 
-  const handleQuickAdd = (amountToAdd) => {
-    const newAmount = currentBid + amountToAdd;
-    setBidInput(newAmount.toString());
-  };
+  const handleQuickAdd = (add) =>
+    setBidInput((Number(currentBid) + add).toString());
+
+  // Determine Image Source
+  // Priority: 1. Database Image, 2. Passed Param, 3. Placeholder
+  const sheetImage = carData?.inspectionSheetImage
+    ? { uri: carData.inspectionSheetImage }
+    : {
+        uri: "https://via.placeholder.com/400x300.png?text=No+Inspection+Image",
+      };
+
+  const carImage =
+    carData?.images && carData.images.length > 0
+      ? { uri: carData.images[0] }
+      : { uri: "https://via.placeholder.com/150" };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -98,11 +153,7 @@ const LiveBiddingScreen = ({ route, navigation }) => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-        >
-          {/* --- HEADER --- */}
+        <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={24} color={colors.black} />
@@ -111,38 +162,54 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             <View style={{ width: 24 }} />
           </View>
 
-          {/* --- CAR SUMMARY --- */}
+          {/* Car Summary */}
           <View style={styles.carSummaryCard}>
-            <Image source={{ uri: currentCar.image }} style={styles.carThumb} />
+            <Image source={carImage} style={styles.carThumb} />
             <View style={styles.carInfo}>
               <Text style={styles.carLabel}>
-                Car: <Text style={styles.carValue}>{currentCar.name}</Text>
-              </Text>
-              <Text style={styles.carLabel}>
-                Model: <Text style={styles.carValue}>{currentCar.model}</Text>
+                {carData?.title || "Loading..."}
               </Text>
               <View style={styles.timerContainer}>
                 <Ionicons name="time-outline" size={16} color="#D32F2F" />
-                <Text style={styles.timerText}>
-                  Ends in: {formatTime(timeLeft)}
-                </Text>
+                <Text style={styles.timerText}>{timeLeft}</Text>
               </View>
             </View>
           </View>
 
-          {/* --- INSPECTION SHEET (Uses dummy data now) --- */}
+          {/* --- CENTER INSPECTION SHEET --- */}
           <View style={styles.inspectionContainer}>
-            <Image
-              source={{ uri: currentCar.inspectionSheet }}
-              style={styles.inspectionImage}
-              resizeMode="contain"
-            />
+            <Text style={styles.sectionTitle}>Inspection Report</Text>
 
-            <TouchableOpacity style={styles.fullSheetLink}>
-              <Text style={styles.linkText}>View Full Inspection Sheet</Text>
+            {/* The Image */}
+            <TouchableOpacity
+              onPress={() => setZoomVisible(true)}
+              style={styles.imageWrapper}
+            >
+              <Image
+                source={sheetImage}
+                style={styles.inspectionImage}
+                resizeMode="contain"
+              />
+              <View style={styles.zoomHint}>
+                <Ionicons name="scan" size={16} color="#fff" />
+                <Text style={styles.zoomText}>Tap to Zoom</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* The PDF Link */}
+            <TouchableOpacity
+              style={styles.pdfLink}
+              onPress={() =>
+                carData.inspectionSheetPdf
+                  ? Linking.openURL(carData.inspectionSheetPdf)
+                  : Alert.alert("Info", "PDF not available")
+              }
+            >
+              <Text style={styles.pdfText}>View Full Inspection Sheet</Text>
               <Ionicons name="document-text" size={20} color={colors.black} />
             </TouchableOpacity>
 
+            {/* The Legend (Restored) */}
             <View style={styles.legendContainer}>
               <View style={styles.legendRow}>
                 <Text style={styles.legendItem}>
@@ -163,20 +230,19 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             </View>
           </View>
 
-          {/* --- LIVE BID DASHBOARD --- */}
+          {/* Current Bid */}
           <View style={styles.bidDashboard}>
             <View style={styles.currentBidBar}>
               <View>
                 <Text style={styles.bidLabel}>Ongoing Bid</Text>
                 <Text style={styles.bidValue}>
-                  Rs. {currentBid.toLocaleString()}
+                  Rs. {isNaN(currentBid) ? "0" : currentBid.toLocaleString()}
                 </Text>
               </View>
               <View style={styles.clockCircle}>
                 <Ionicons name="stopwatch" size={24} color={colors.primary} />
               </View>
             </View>
-
             <TouchableOpacity
               style={styles.historyButton}
               onPress={() => setHistoryVisible(true)}
@@ -188,100 +254,128 @@ const LiveBiddingScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* --- BID CONTROLS (CONDITIONAL RENDER) --- */}
-          {/* ONLY show this section if mode is 'bid' */}
-          {mode === "bid" && (
-            <>
-              <View style={styles.controlsContainer}>
-                <Text style={styles.controlLabel}>Increase Price</Text>
-
-                <View style={styles.inputRow}>
-                  <TextInput
-                    style={styles.bidInput}
-                    placeholder="Enter Amount"
-                    keyboardType="numeric"
-                    value={bidInput}
-                    onChangeText={setBidInput}
-                  />
-                  <TouchableOpacity
-                    style={styles.plusButton}
-                    onPress={() => placeBid(bidInput)}
-                  >
-                    <Ionicons name="add" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.quickChipsRow}>
-                  <TouchableOpacity
-                    style={styles.chip}
-                    onPress={() => handleQuickAdd(10000)}
-                  >
-                    <Text style={styles.chipText}>+10k</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.chip}
-                    onPress={() => handleQuickAdd(25000)}
-                  >
-                    <Text style={styles.chipText}>+25k</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.chip}
-                    onPress={() => handleQuickAdd(50000)}
-                  >
-                    <Text style={styles.chipText}>+50k</Text>
-                  </TouchableOpacity>
-                </View>
+          {/* Controls */}
+          {mode === "bid" ? (
+            <View style={styles.controlsContainer}>
+              <Text style={styles.controlLabel}>Increase Price</Text>
+              <View style={styles.inputRow}>
+                <Text
+                  style={{ fontSize: 18, fontWeight: "bold", marginRight: 5 }}
+                >
+                  Rs.
+                </Text>
+                <TextInput
+                  style={styles.bidInput}
+                  placeholder="Enter Amount"
+                  keyboardType="numeric"
+                  value={bidInput}
+                  onChangeText={setBidInput}
+                />
               </View>
-
+              <View style={styles.quickChipsRow}>
+                <TouchableOpacity
+                  style={styles.chip}
+                  onPress={() => handleQuickAdd(10000)}
+                >
+                  <Text style={styles.chipText}>+10k</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.chip}
+                  onPress={() => handleQuickAdd(25000)}
+                >
+                  <Text style={styles.chipText}>+25k</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.chip}
+                  onPress={() => handleQuickAdd(50000)}
+                >
+                  <Text style={styles.chipText}>+50k</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
-                style={styles.placeBidButton}
-                onPress={() => placeBid(bidInput)}
+                style={[
+                  styles.placeBidButton,
+                  loading && { backgroundColor: colors.grey },
+                ]}
+                onPress={() => handlePlaceBid(bidInput)}
+                disabled={loading}
               >
-                <Text style={styles.placeBidText}>Place Bid</Text>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.placeBidText}>Place Bid</Text>
+                )}
               </TouchableOpacity>
-            </>
-          )}
-
-          {mode === "view" && (
-            <View style={{ padding: 20, alignItems: "center" }}>
-              <Text style={{ color: colors.grey, fontStyle: "italic" }}>
-                You are in View Only mode. Join the Auction to place bids.
-              </Text>
             </View>
+          ) : (
+            <Text
+              style={{ textAlign: "center", padding: 20, color: colors.grey }}
+            >
+              You are in View Only mode.
+            </Text>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* --- HISTORY MODAL --- */}
+      {/* MODALS */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={historyVisible}
+        transparent
+        animationType="slide"
         onRequestClose={() => setHistoryVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Bid History</Text>
-              <TouchableOpacity onPress={() => setHistoryVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.black} />
-              </TouchableOpacity>
-            </View>
-
+            <Text style={styles.modalTitle}>Bid History</Text>
             <FlatList
               data={bidHistory}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <View style={styles.historyItem}>
-                  <View>
-                    <Text style={styles.historyUser}>{item.user}</Text>
-                    <Text style={styles.historyTime}>{item.time}</Text>
-                  </View>
-                  <Text style={styles.historyAmount}>{item.amount}</Text>
+                  <Text style={styles.historyUser}>
+                    {item.userId ? item.userId.slice(0, 5) : "User"}...
+                  </Text>
+                  <Text style={styles.historyTime}>{item.time}</Text>
+                  <Text style={styles.historyAmount}>
+                    Rs. {item.amount.toLocaleString()}
+                  </Text>
                 </View>
               )}
             />
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setHistoryVisible(false)}
+            >
+              <Text style={{ color: "white", fontWeight: "bold" }}>Close</Text>
+            </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={zoomVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZoomVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "black",
+            justifyContent: "center",
+          }}
+        >
+          <TouchableOpacity
+            style={styles.closeZoom}
+            onPress={() => setZoomVisible(false)}
+          >
+            <Ionicons name="close-circle" size={40} color="white" />
+          </TouchableOpacity>
+          <Image
+            source={sheetImage}
+            style={{ width: "100%", height: "100%" }}
+            resizeMode="contain"
+          />
         </View>
       </Modal>
     </SafeAreaView>
@@ -292,8 +386,8 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
@@ -309,8 +403,7 @@ const styles = StyleSheet.create({
   },
   carThumb: { width: 80, height: 60, borderRadius: 8, marginRight: 15 },
   carInfo: { flex: 1 },
-  carLabel: { fontSize: 14, color: colors.grey },
-  carValue: { color: colors.black, fontWeight: "bold" },
+  carLabel: { fontSize: 16, fontWeight: "bold", color: colors.black },
   timerContainer: { flexDirection: "row", alignItems: "center", marginTop: 5 },
   timerText: {
     color: "#D32F2F",
@@ -318,16 +411,53 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontSize: 14,
   },
+
+  // INSPECTION STYLES (CENTERED)
   inspectionContainer: { margin: 20, alignItems: "center" },
-  inspectionImage: { width: "100%", height: 350, borderRadius: 10 }, // Increased height for document visibility
-  fullSheetLink: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 10,
+    color: colors.black,
+    alignSelf: "flex-start",
+  }, // Align title left
+  imageWrapper: {
+    width: "100%",
+    height: 250,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "#f0f0f0",
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  inspectionImage: { width: "100%", height: "100%" },
+  zoomHint: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    flexDirection: "row",
+    padding: 5,
+    borderRadius: 5,
+  },
+  zoomText: { color: "#fff", fontSize: 12, marginLeft: 5 },
+
+  pdfLink: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 15,
     borderBottomWidth: 1,
     borderBottomColor: colors.black,
+    paddingBottom: 2,
   },
-  linkText: { fontSize: 16, fontWeight: "bold", marginRight: 5 },
+  pdfText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginRight: 5,
+    color: colors.black,
+  },
+
+  // LEGEND STYLES
   legendContainer: { marginTop: 15, width: "100%" },
   legendRow: {
     flexDirection: "row",
@@ -336,7 +466,8 @@ const styles = StyleSheet.create({
   },
   legendItem: { fontSize: 14, color: colors.grey, width: "48%" },
   bold: { fontWeight: "bold", color: colors.black },
-  bidDashboard: { marginHorizontal: 20 },
+
+  bidDashboard: { marginHorizontal: 20, marginTop: 10 },
   currentBidBar: {
     backgroundColor: colors.primary,
     padding: 20,
@@ -357,9 +488,9 @@ const styles = StyleSheet.create({
   },
   historyButton: {
     alignItems: "center",
+    marginTop: 10,
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 10,
   },
   historyButtonText: {
     color: colors.primary,
@@ -374,23 +505,14 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   controlLabel: { fontSize: 16, fontWeight: "bold", marginBottom: 10 },
-  inputRow: { flexDirection: "row", alignItems: "center" },
-  bidInput: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 15,
-    borderRadius: 10,
-    fontSize: 16,
-    marginRight: 10,
-  },
-  plusButton: {
-    backgroundColor: colors.primary,
-    width: 50,
-    height: 50,
-    borderRadius: 10,
+  inputRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 15,
   },
+  bidInput: { flex: 1, paddingVertical: 15, fontSize: 18, fontWeight: "bold" },
   quickChipsRow: {
     flexDirection: "row",
     marginTop: 15,
@@ -407,7 +529,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.primary, fontWeight: "bold" },
   placeBidButton: {
     backgroundColor: colors.primary,
-    margin: 20,
+    marginTop: 20,
     padding: 18,
     borderRadius: 12,
     alignItems: "center",
@@ -420,28 +542,36 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: "#fff",
+    width: "100%",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
     height: "50%",
   },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 15,
+    textAlign: "center",
   },
-  modalTitle: { fontSize: 20, fontWeight: "bold" },
   historyItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#eee",
   },
-  historyUser: { fontWeight: "bold", fontSize: 16 },
+  historyUser: { fontWeight: "bold", fontSize: 14 },
   historyTime: { color: colors.grey, fontSize: 12 },
-  historyAmount: { color: colors.primary, fontWeight: "bold", fontSize: 16 },
+  historyAmount: { color: colors.primary, fontWeight: "bold" },
+  closeButton: {
+    backgroundColor: colors.primary,
+    padding: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 15,
+  },
+  closeZoom: { position: "absolute", top: 40, right: 20, zIndex: 10 },
 });
 
 export default LiveBiddingScreen;

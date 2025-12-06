@@ -20,19 +20,19 @@ import { auth, db } from "../config/firebase";
 import colors from "../constants/colors";
 import { liveAuctions, scheduledAuctions } from "../data/carData";
 
+// TODO: REPLACE WITH YOUR TEST CAR ID (THE ONE YOU SEEDED)
+const MY_TEST_CAR_ID = "x6gH4LVO9jzEvc3PddwI";
+
 const AuctionsScreen = ({ navigation }) => {
   const currentLiveCar = liveAuctions[0];
-  const upNextCars = liveAuctions.slice(1);
 
-  // --- STATE ---
   const [modalVisible, setModalVisible] = useState(false);
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [userAccessCode, setUserAccessCode] = useState(null); // Store the user's correct code
 
-  const [correctAccessCode, setCorrectAccessCode] = useState(null);
-
-  // --- JOIN AUCTION LOGIC ---
-  const handleJoinAuction = async (carItem) => {
+  // --- JOIN LOGIC ---
+  const handleJoinAuction = async () => {
     const user = auth.currentUser;
 
     if (!user) {
@@ -43,15 +43,15 @@ const AuctionsScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      // Check Global Request Status
+      // 1. Check if user has a request
       const q = query(
         collection(db, "auction_requests"),
         where("userId", "==", user.uid)
       );
-
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
+        // No request found -> Send to Registration
         setLoading(false);
         navigation.navigate("AuctionRegistration");
       } else {
@@ -60,11 +60,12 @@ const AuctionsScreen = ({ navigation }) => {
 
         if (requestData.status === "pending") {
           Alert.alert(
-            "Verification Pending",
-            "We are verifying your security deposit. Please check your WhatsApp."
+            "Pending",
+            "Your registration is under review. Please wait for approval."
           );
         } else if (requestData.status === "approved") {
-          setCorrectAccessCode(requestData.accessCode);
+          // User is approved! Save their code and show modal.
+          setUserAccessCode(requestData.accessCode);
           setModalVisible(true);
         } else {
           Alert.alert(
@@ -76,40 +77,25 @@ const AuctionsScreen = ({ navigation }) => {
     } catch (error) {
       setLoading(false);
       console.error("Check Status Error:", error);
-      Alert.alert("Error", "Could not verify status. Check internet.");
+      Alert.alert("Error", "Could not verify status.");
     }
   };
 
   const verifyCode = () => {
-    if (accessCodeInput === correctAccessCode) {
+    // Check if input matches the code from Firestore
+    if (accessCodeInput === userAccessCode) {
       setModalVisible(false);
       setAccessCodeInput("");
-      // PASSING MODE: "bid"
-      navigation.navigate("LiveBidding", { item: currentLiveCar, mode: "bid" });
+
+      // Navigate to the Live Car (using your seeded ID)
+      navigation.navigate("LiveBidding", {
+        item: { id: MY_TEST_CAR_ID },
+        mode: "bid",
+      });
     } else {
       Alert.alert("Access Denied", "Incorrect Access Code.");
     }
   };
-
-  const renderUpNextItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.upNextCard}
-      onPress={() => navigation.navigate("CarDetails", { item })}
-    >
-      <View style={styles.upNextImageContainer}>
-        <Image source={{ uri: item.image }} style={styles.upNextImage} />
-        <View style={styles.queueBadge}>
-          <Text style={styles.queueText}>Next</Text>
-        </View>
-      </View>
-      <View style={styles.upNextDetails}>
-        <Text style={styles.upNextTitle} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <Text style={styles.upNextPrice}>Est: {item.price}</Text>
-      </View>
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -130,27 +116,6 @@ const AuctionsScreen = ({ navigation }) => {
               size={28}
               color={colors.primary}
             />
-            <View style={styles.notificationDot} />
-          </TouchableOpacity>
-        </View>
-
-        {/* SEARCH BAR */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBox}>
-            <Ionicons
-              name="search-outline"
-              size={20}
-              color={colors.grey}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              placeholder="Search for your car..."
-              placeholderTextColor={colors.grey}
-              style={styles.searchInput}
-            />
-          </View>
-          <TouchableOpacity style={styles.filterButton}>
-            <Ionicons name="options-outline" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -160,100 +125,44 @@ const AuctionsScreen = ({ navigation }) => {
             <View style={styles.pulsingDot} />
             <Text style={styles.sectionTitle}>Live Now</Text>
           </View>
-          <Text style={styles.sectionSubtitle}>Happening in Lahore Center</Text>
         </View>
 
-        {currentLiveCar ? (
-          <View style={styles.heroContainer}>
-            <View style={styles.heroImageWrapper}>
-              <Image
-                source={{ uri: currentLiveCar.image }}
-                style={styles.heroImage}
-              />
-              <View style={styles.liveBadge}>
-                <Ionicons name="radio" size={14} color="#fff" />
-                <Text style={styles.liveBadgeText}>LIVE</Text>
-              </View>
-            </View>
-
-            <View style={styles.heroDetails}>
-              <View style={styles.titlePriceRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.heroTitle} numberOfLines={1}>
-                    {currentLiveCar.name}
-                  </Text>
-                  <Text style={styles.heroModel}>{currentLiveCar.model}</Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.heroLabel}>Current Bid</Text>
-                  <Text style={styles.heroPrice}>{currentLiveCar.price}</Text>
-                </View>
-              </View>
-
-              <View style={styles.buttonRow}>
-                {/* VIEW ONLY BUTTON: PASSES MODE="view" */}
-                <TouchableOpacity
-                  style={styles.outlineButton}
-                  onPress={() =>
-                    navigation.navigate("LiveBidding", {
-                      item: currentLiveCar,
-                      mode: "view",
-                    })
-                  }
-                >
-                  <Text style={styles.outlineButtonText}>View Only</Text>
-                </TouchableOpacity>
-
-                {/* JOIN BUTTON */}
-                <TouchableOpacity
-                  style={styles.fillButton}
-                  onPress={() => handleJoinAuction(currentLiveCar)}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.fillButtonText}>Join Auction</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+        {/* DUMMY UI FOR DEMO (Clicking Join triggers logic) */}
+        <View style={styles.heroContainer}>
+          <Image
+            source={{ uri: currentLiveCar.image }}
+            style={styles.heroImage}
+          />
+          <View style={styles.heroDetails}>
+            <Text style={styles.heroTitle}>{currentLiveCar.name}</Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={styles.outlineButton}
+                onPress={() =>
+                  navigation.navigate("LiveBidding", {
+                    item: { id: MY_TEST_CAR_ID },
+                    mode: "view",
+                  })
+                }
+              >
+                <Text style={styles.outlineButtonText}>View Only</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.fillButton}
+                onPress={handleJoinAuction}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.fillButtonText}>Join Auction</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
-        ) : (
-          <Text style={styles.noAuctionText}>No Live Auction in progress.</Text>
-        )}
-
-        {/* UP NEXT SECTION */}
-        <View style={[styles.sectionHeader, { marginTop: 20 }]}>
-          <Text style={styles.sectionTitle}>Up Next</Text>
-          <Text style={styles.sectionSubtitle}>Coming to stage soon</Text>
         </View>
 
-        <FlatList
-          horizontal
-          data={upNextCars}
-          renderItem={renderUpNextItem}
-          keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
-
-        {/* SCHEDULED AUCTIONS */}
-        <View style={[styles.sectionHeader, { marginTop: 20 }]}>
-          <Text style={styles.sectionTitle}>Auction Schedule</Text>
-          <Text style={styles.sectionSubtitle}>Upcoming Events</Text>
-        </View>
-
-        <FlatList
-          horizontal
-          data={scheduledAuctions}
-          renderItem={({ item }) => <CarCard item={item} isLive={false} />}
-          keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
-
-        <View style={{ height: 50 }} />
+        {/* OTHER LISTS ... (Keep your existing FlatLists here) */}
       </ScrollView>
 
       {/* ACCESS CODE MODAL */}
@@ -267,21 +176,18 @@ const AuctionsScreen = ({ navigation }) => {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Enter Access Code</Text>
             <Text style={styles.modalSubtitle}>
-              Please enter the code sent to your WhatsApp.
+              Enter the code provided by Admin.
             </Text>
-
             <TextInput
               style={styles.codeInput}
-              placeholder="e.g. 7860"
+              placeholder="e.g. 1234"
               keyboardType="numeric"
               value={accessCodeInput}
               onChangeText={setAccessCodeInput}
             />
-
             <TouchableOpacity style={styles.modalButton} onPress={verifyCode}>
               <Text style={styles.modalButtonText}>Enter Auction</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setModalVisible(false)}
@@ -300,139 +206,51 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    padding: 20,
   },
   headerLogo: { width: 80, height: 40 },
-  notificationDot: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  sectionHeader: { paddingHorizontal: 20, marginBottom: 10 },
+  liveIndicatorRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  pulsingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: "red",
   },
-  searchContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    marginTop: 5,
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: "row",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 10,
-    padding: 8,
-    alignItems: "center",
-    marginRight: 10,
-  },
-  searchIcon: { marginRight: 10 },
-  searchInput: { flex: 1, fontSize: 14, color: colors.text },
-  filterButton: { padding: 10 },
-  sectionHeader: { paddingHorizontal: 20, marginBottom: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: "bold", color: colors.black },
-  sectionSubtitle: { fontSize: 12, color: colors.grey },
-  liveIndicatorRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pulsingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "red" },
+  sectionTitle: { fontSize: 18, fontWeight: "bold" },
   heroContainer: {
-    marginHorizontal: 20,
+    margin: 20,
     backgroundColor: "#fff",
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
-    overflow: "hidden",
+    borderRadius: 15,
+    elevation: 5,
   },
-  heroImageWrapper: { position: "relative" },
-  heroImage: { width: "100%", height: 150, resizeMode: "cover" },
-  liveBadge: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(231, 76, 60, 0.9)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+  heroImage: {
+    width: "100%",
+    height: 150,
+    borderTopLeftRadius: 15,
+    borderTopRightRadius: 15,
   },
-  liveBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 10 },
-  heroDetails: { padding: 12 },
-  titlePriceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  heroTitle: { fontSize: 18, fontWeight: "bold", color: colors.black },
-  heroModel: { fontSize: 14, color: colors.grey, marginTop: 2 },
-  heroLabel: { fontSize: 10, color: colors.textLight, marginBottom: 0 },
-  heroPrice: { fontSize: 16, fontWeight: "bold", color: colors.primary },
+  heroDetails: { padding: 15 },
+  heroTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
   buttonRow: { flexDirection: "row", gap: 10 },
   outlineButton: {
     flex: 1,
-    paddingVertical: 10,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.primary,
     borderRadius: 8,
     alignItems: "center",
-    justifyContent: "center",
   },
-  outlineButtonText: {
-    color: colors.primary,
-    fontWeight: "bold",
-    fontSize: 14,
-  },
+  outlineButtonText: { color: colors.primary, fontWeight: "bold" },
   fillButton: {
     flex: 1,
-    paddingVertical: 10,
+    padding: 10,
     backgroundColor: colors.primary,
     borderRadius: 8,
     alignItems: "center",
-    justifyContent: "center",
   },
-  fillButtonText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
-  listContent: { paddingLeft: 20, paddingRight: 5 },
-  upNextCard: {
-    width: 140,
-    marginRight: 12,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-    paddingBottom: 8,
-  },
-  upNextImageContainer: { position: "relative" },
-  upNextImage: {
-    width: "100%",
-    height: 90,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    marginBottom: 6,
-  },
-  queueBadge: {
-    position: "absolute",
-    top: 4,
-    left: 4,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  queueText: { color: "#fff", fontSize: 8, fontWeight: "bold" },
-  upNextDetails: { paddingHorizontal: 8 },
-  upNextTitle: { fontSize: 13, fontWeight: "bold", color: colors.black },
-  upNextPrice: { fontSize: 11, color: colors.grey, marginTop: 1 },
-  noAuctionText: { marginLeft: 20, color: colors.grey, fontStyle: "italic" },
+  fillButtonText: { color: "#fff", fontWeight: "bold" },
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -448,12 +266,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
-  modalSubtitle: {
-    fontSize: 14,
-    color: colors.grey,
-    textAlign: "center",
-    marginBottom: 20,
-  },
+  modalSubtitle: { fontSize: 14, color: colors.grey, marginBottom: 20 },
   codeInput: {
     width: "100%",
     borderBottomWidth: 1,

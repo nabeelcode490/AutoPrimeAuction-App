@@ -18,15 +18,12 @@ import { auth, db } from "../config/firebase";
 import colors from "../constants/colors";
 
 const AuctionRegistrationScreen = ({ navigation }) => {
-  // We no longer need route.params because the text is generic now
-
   const [fullName, setFullName] = useState("");
   const [cnic, setCnic] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- 1. Image Picker Logic ---
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -34,59 +31,54 @@ const AuctionRegistrationScreen = ({ navigation }) => {
       aspect: [4, 3],
       quality: 1,
     });
-
     if (!result.canceled) {
       setImage(result.assets[0].uri);
     }
   };
 
-  // --- 2. Submit Logic ---
   const onSubmitPressed = async () => {
-    if (!fullName || !cnic || !whatsapp || !image) {
-      Alert.alert("Missing Info", "Please fill all fields and upload proof.");
+    if (!fullName || !cnic || !whatsapp) {
+      Alert.alert("Missing Info", "Please fill all fields.");
       return;
     }
+    // In a real app, you would upload the image to Cloudinary first.
+    // For now, we will just save the text data to keep it simple for the demo.
 
     const user = auth.currentUser;
     if (!user) {
-      Alert.alert("Error", "You must be logged in to register.");
+      Alert.alert("Error", "You must be logged in.");
       return;
     }
 
     setLoading(true);
 
     try {
-      // START: FIREBASE LOGIC
-      // We create a "Global Access" request
       await addDoc(collection(db, "auction_requests"), {
         userId: user.uid,
         userName: fullName,
         cnic: cnic,
         whatsapp: whatsapp,
-        requestType: "GLOBAL_ACCESS", // Changed from specific car ID to Global
-        status: "pending",
-        accessCode: null,
+        status: "pending", // Default status
+        accessCode: null, // Admin will set this later
         createdAt: new Date(),
       });
 
       setLoading(false);
-
       Alert.alert(
-        "Request Submitted!",
-        "Please check your WhatsApp. Our admin will verify your security deposit and send you an Access Code shortly.",
-        [{ text: "OK", onPress: () => navigation.goBack() }]
+        "Request Submitted",
+        "Your request is pending approval. You will receive an Access Code once approved.",
+        [{ text: "OK", onPress: () => navigation.navigate("Home") }]
       );
     } catch (error) {
       setLoading(false);
-      console.error("Registration Error:", error);
-      Alert.alert("Error", "Could not submit request. Please try again.");
+      console.error(error);
+      Alert.alert("Error", "Could not submit request.");
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.black} />
@@ -95,29 +87,23 @@ const AuctionRegistrationScreen = ({ navigation }) => {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* GENERIC TEXT UPDATE */}
         <Text style={styles.subText}>
-          To join our{" "}
-          <Text style={{ fontWeight: "bold" }}>Live Bidding Events</Text>,
-          please verify your identity and upload proof of your security deposit.
+          To join our Live Bidding Events, please verify your identity.
         </Text>
 
-        {/* Form Inputs */}
         <CustomInput
           iconName="person-outline"
           placeholder="Full Name"
           value={fullName}
           setValue={setFullName}
         />
-
         <CustomInput
           iconName="card-outline"
-          placeholder="CNIC (3520212345670; without dash)"
+          placeholder="CNIC"
           value={cnic}
           setValue={setCnic}
           keyboardType="numeric"
         />
-
         <CustomInput
           iconName="logo-whatsapp"
           placeholder="WhatsApp Number"
@@ -126,7 +112,6 @@ const AuctionRegistrationScreen = ({ navigation }) => {
           keyboardType="phone-pad"
         />
 
-        {/* Image Picker */}
         <Text style={styles.label}>Upload Payment Screenshot</Text>
         <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
           {image ? (
@@ -143,7 +128,6 @@ const AuctionRegistrationScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
 
-        {/* Submit Button */}
         <TouchableOpacity
           style={styles.submitButton}
           onPress={onSubmitPressed}
@@ -170,13 +154,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   headerTitle: { fontSize: 20, fontWeight: "bold", color: colors.black },
-  subText: {
-    fontSize: 14,
-    color: colors.grey,
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-
+  subText: { fontSize: 14, color: colors.grey, marginBottom: 20 },
   label: { fontSize: 16, fontWeight: "bold", marginTop: 15, marginBottom: 10 },
   imagePicker: {
     height: 150,
@@ -192,7 +170,6 @@ const styles = StyleSheet.create({
   previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
   placeholder: { alignItems: "center" },
   placeholderText: { color: colors.grey, marginTop: 5 },
-
   submitButton: {
     backgroundColor: colors.primary,
     padding: 15,

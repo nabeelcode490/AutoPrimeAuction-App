@@ -16,14 +16,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import colors from "../constants/colors";
 
-// --- CONFIGURATION ---
+// --- CLOUDINARY CONFIG ---
 const CLOUD_NAME = "dxydzzqnl";
 const UPLOAD_PRESET = "autoprime_upload";
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 const CLOUDINARY_RAW_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`;
 
-// TODO: CHECK YOUR IP ADDRESS!
-const API_BASE_URL = "http://192.168.1.39:3000";
+// TODO: CHECK YOUR IP ADDRESS! (Ensure this is current)
+const API_BASE_URL = "http://192.168.1.23:3000";
 
 const SellCarScreen = ({ navigation }) => {
   // --- FORM STATE ---
@@ -43,14 +43,15 @@ const SellCarScreen = ({ navigation }) => {
     sensors: false,
   });
 
-  const [inspectionSheet, setInspectionSheet] = useState(null);
-  const [images, setImages] = useState([]);
+  const [inspectionSheet, setInspectionSheet] = useState(null); // PDF
+  const [inspectionSheetImage, setInspectionSheetImage] = useState(null); // Image
+  const [images, setImages] = useState([]); // Car Images
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(""); // To show "Uploading...", "Analyzing..."
+  const [statusMessage, setStatusMessage] = useState("");
 
   // --- HANDLERS ---
-
-  const pickImage = async () => {
+  const pickCarImages = async () => {
     if (images.length >= 4) {
       Alert.alert("Limit Reached", "You can only upload up to 4 images.");
       return;
@@ -61,7 +62,6 @@ const SellCarScreen = ({ navigation }) => {
       aspect: [4, 3],
       quality: 0.5,
     });
-
     if (!result.canceled) {
       setImages([...images, result.assets[0].uri]);
     }
@@ -71,10 +71,21 @@ const SellCarScreen = ({ navigation }) => {
     setImages(images.filter((_, index) => index !== indexToRemove));
   };
 
+  const pickInspectionImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setInspectionSheetImage(result.assets[0].uri);
+    }
+  };
+
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/pdf", "image/*"],
+        type: ["application/pdf"],
       });
       if (!result.canceled) {
         setInspectionSheet(result.assets[0]);
@@ -84,7 +95,6 @@ const SellCarScreen = ({ navigation }) => {
     }
   };
 
-  // --- CLOUDINARY UPLOAD HELPER ---
   const uploadToCloudinary = async (fileUri, type = "image") => {
     const data = new FormData();
     let filename = fileUri.split("/").pop();
@@ -116,33 +126,41 @@ const SellCarScreen = ({ navigation }) => {
 
   // --- MAIN SUBMIT HANDLER ---
   const handleSubmit = async () => {
-    if (!title || !price || !year || images.length === 0) {
-      Alert.alert(
-        "Missing Info",
-        "Please fill required fields and upload images."
-      );
+    // 1. Ultra-Relaxed Validation (Only Title and Price required)
+    if (!title || !price) {
+      Alert.alert("Missing Info", "Title and Price are mandatory.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // 1. Upload Images
-      setStatusMessage("Uploading Images...");
+      // 2. Upload Car Images (ONLY If provided)
       const imageUrls = [];
-      for (const imageUri of images) {
-        const url = await uploadToCloudinary(imageUri, "image");
-        imageUrls.push(url);
+      if (images.length > 0) {
+        setStatusMessage("Uploading Car Photos...");
+        for (const imageUri of images) {
+          const url = await uploadToCloudinary(imageUri, "image");
+          imageUrls.push(url);
+        }
       }
 
-      let docUrl = null;
+      // 3. Upload Inspection Files (ONLY If provided)
+      let sheetImageUrl = null;
+      let sheetPdfUrl = null;
+
+      if (inspectionSheetImage) {
+        setStatusMessage("Uploading Inspection Image...");
+        sheetImageUrl = await uploadToCloudinary(inspectionSheetImage, "image");
+      }
+
       if (inspectionSheet) {
-        setStatusMessage("Uploading Document...");
-        docUrl = await uploadToCloudinary(inspectionSheet.uri, "raw");
+        setStatusMessage("Uploading PDF...");
+        sheetPdfUrl = await uploadToCloudinary(inspectionSheet.uri, "raw");
       }
 
-      // 2. Save to Database (Node.js -> Firestore)
-      setStatusMessage("Saving Car Details...");
+      // 4. Save to Database
+      setStatusMessage("Saving Data...");
       const carData = {
         title,
         condition,
@@ -154,8 +172,9 @@ const SellCarScreen = ({ navigation }) => {
         description,
         features,
         images: imageUrls,
-        inspectionSheet: docUrl,
-        userId: "test-user-123", // In real app: auth.currentUser.uid
+        inspectionSheetImage: sheetImageUrl, // Can be null
+        inspectionSheetPdf: sheetPdfUrl, // Can be null
+        userId: "test-user-123",
       };
 
       const saveResponse = await fetch(`${API_BASE_URL}/api/sell-car`, {
@@ -168,32 +187,33 @@ const SellCarScreen = ({ navigation }) => {
       if (!saveResult.success)
         throw new Error("Failed to save car to database");
 
-      // 3. Call AI for Price Evaluation
-      setStatusMessage("AI is Evaluating Price...");
-      // We send the 'year' and 'price' to our Node backend, which asks Python
+      // 5. Call AI
+      setStatusMessage("AI Evaluating...");
       const aiResponse = await fetch(`${API_BASE_URL}/api/evaluate-price`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // IMPORTANT: Send a default year "2020" if the user left it empty to avoid AI crash
         body: JSON.stringify({
-          title: title,
-          year: year,
-          price: price,
+          title,
+          year: year || "2020",
+          price,
         }),
       });
-
       const aiResult = await aiResponse.json();
-      console.log("AI Result:", aiResult);
 
       setIsSubmitting(false);
       setStatusMessage("");
 
-      // 4. Navigate with Real AI Data
+      // 6. Navigate with "HasDocs" Flag
+      // We check if BOTH files exist to allow auction scheduling later
+      const hasInspectionDocs = !!(sheetImageUrl && sheetPdfUrl);
+
       navigation.navigate("PriceEvaluation", {
         carId: saveResult.carId,
-        // Fallback to "N/A" if AI fails, but it should work if Python is running
         estimatedPrice: aiResult.estimated_price || "Processing...",
         minPrice: aiResult.price_range?.min || "N/A",
         maxPrice: aiResult.price_range?.max || "N/A",
+        hasInspectionDocs: hasInspectionDocs,
       });
     } catch (error) {
       setIsSubmitting(false);
@@ -201,10 +221,36 @@ const SellCarScreen = ({ navigation }) => {
       console.error("Process Error:", error);
       Alert.alert(
         "Error",
-        "Something went wrong. Ensure both Node and Python servers are running."
+        "Something went wrong. Check your internet connection or server."
       );
     }
   };
+
+  // UI Helpers
+  const RadioButton = ({ label, value }) => (
+    <TouchableOpacity
+      style={styles.radioRow}
+      onPress={() => setCondition(value)}
+    >
+      <Ionicons
+        name={condition === value ? "radio-button-on" : "radio-button-off"}
+        size={24}
+        color={condition === value ? colors.primary : colors.grey}
+      />
+      <Text style={styles.radioText}>{label}</Text>
+    </TouchableOpacity>
+  );
+
+  const Checkbox = ({ label, isChecked, onToggle }) => (
+    <TouchableOpacity style={styles.checkboxRow} onPress={onToggle}>
+      <Ionicons
+        name={isChecked ? "checkbox" : "square-outline"}
+        size={24}
+        color={isChecked ? colors.primary : colors.black}
+      />
+      <Text style={styles.checkboxText}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -212,7 +258,7 @@ const SellCarScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentContainer}
       >
-        {/* HEADER */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.black} />
@@ -221,7 +267,7 @@ const SellCarScreen = ({ navigation }) => {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* TITLE */}
+        {/* Title (MANDATORY) */}
         <Text style={styles.label}>
           Title <Text style={{ color: "red" }}>*</Text>
         </Text>
@@ -232,29 +278,18 @@ const SellCarScreen = ({ navigation }) => {
           onChangeText={setTitle}
         />
 
-        {/* CONDITION & YEAR */}
+        {/* Condition & Year (OPTIONAL) */}
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Condition</Text>
             <View style={styles.radioContainer}>
-              <RadioButton
-                label="New"
-                value="New"
-                condition={condition}
-                setCondition={setCondition}
-              />
-              <RadioButton
-                label="Used"
-                value="Used"
-                condition={condition}
-                setCondition={setCondition}
-              />
+              <RadioButton label="New" value="New" />
+              <RadioButton label="Used" value="Used" />
             </View>
           </View>
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.label}>
-              Year <Text style={{ color: "red" }}>*</Text>
-            </Text>
+            {/* NO RED STAR HERE */}
+            <Text style={styles.label}>Year</Text>
             <TextInput
               style={styles.input}
               placeholder="2021"
@@ -265,7 +300,7 @@ const SellCarScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* BRAND & MODEL */}
+        {/* Brand & Model */}
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 10 }}>
             <Text style={styles.label}>Brand</Text>
@@ -287,7 +322,7 @@ const SellCarScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* FEATURES */}
+        {/* Features */}
         <Text style={styles.label}>Features</Text>
         <View style={styles.featuresGrid}>
           <View style={styles.column}>
@@ -322,7 +357,7 @@ const SellCarScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* LOCATION & PRICE */}
+        {/* Location & Price (PRICE MANDATORY) */}
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 10 }}>
             <Text style={styles.label}>Location</Text>
@@ -355,31 +390,59 @@ const SellCarScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* INSPECTION SHEET */}
-        <Text style={styles.label}>Upload Inspection Sheet (PDF)</Text>
-        <TouchableOpacity style={styles.uploadButton} onPress={pickDocument}>
-          <Text style={styles.uploadButtonText}>
-            {inspectionSheet ? inspectionSheet.name : "Upload File"}
-          </Text>
-          <Ionicons name="document-text" size={20} color={colors.black} />
-        </TouchableOpacity>
+        {/* --- INSPECTION SECTION (OPTIONAL) --- */}
+        <View style={styles.inspectionSection}>
+          <Text style={styles.sectionTitle}>Inspection Details</Text>
+          <Text style={styles.helperText}>(Mandatory only for Auctions)</Text>
 
-        {/* DESCRIPTION */}
+          {/* Upload PDF */}
+          <Text style={styles.subLabel}>Upload Inspection Sheet (PDF)</Text>
+          <TouchableOpacity style={styles.uploadButton} onPress={pickDocument}>
+            <Text style={styles.uploadButtonText} numberOfLines={1}>
+              {inspectionSheet ? inspectionSheet.name : "Upload File"}
+            </Text>
+            <Ionicons name="document-text" size={20} color={colors.black} />
+          </TouchableOpacity>
+
+          {/* Upload Image */}
+          <Text style={styles.subLabel}>Upload Inspection Sheet (Image)</Text>
+          <TouchableOpacity
+            style={styles.imageUploadSection}
+            onPress={pickInspectionImage}
+          >
+            {inspectionSheetImage ? (
+              <Image
+                source={{ uri: inspectionSheetImage }}
+                style={{ width: "100%", height: 150, borderRadius: 8 }}
+                resizeMode="contain"
+              />
+            ) : (
+              <View style={{ alignItems: "center" }}>
+                <Ionicons name="image-outline" size={30} color={colors.grey} />
+                <Text style={styles.imageUploadText}>Tap to upload Image</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Description */}
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
-          placeholder="Description..."
+          placeholder="Describe your car..."
           multiline
           numberOfLines={4}
           value={description}
           onChangeText={setDescription}
         />
 
-        {/* IMAGE UPLOAD */}
-        <Text style={styles.label}>
-          Car Images <Text style={{ color: "red" }}>*</Text>
-        </Text>
-        <TouchableOpacity style={styles.imageUploadSection} onPress={pickImage}>
+        {/* Car Images (OPTIONAL) */}
+        {/* NO RED STAR HERE */}
+        <Text style={[styles.label, { marginTop: 20 }]}>Car Photos</Text>
+        <TouchableOpacity
+          style={styles.imageUploadSection}
+          onPress={pickCarImages}
+        >
           <Ionicons name="camera" size={24} color={colors.black} />
           <Text style={styles.imageUploadText}>
             Upload images ({images.length}/4)
@@ -401,7 +464,7 @@ const SellCarScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* BOTTOM BUTTON */}
+      {/* Footer */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={[
@@ -412,9 +475,7 @@ const SellCarScreen = ({ navigation }) => {
           disabled={isSubmitting}
         >
           {isSubmitting ? (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
+            <View style={{ flexDirection: "row", gap: 10 }}>
               <ActivityIndicator color="#fff" />
               <Text style={{ color: "#fff" }}>{statusMessage}</Text>
             </View>
@@ -426,29 +487,6 @@ const SellCarScreen = ({ navigation }) => {
     </SafeAreaView>
   );
 };
-
-// Sub-components
-const RadioButton = ({ label, value, condition, setCondition }) => (
-  <TouchableOpacity style={styles.radioRow} onPress={() => setCondition(value)}>
-    <Ionicons
-      name={condition === value ? "radio-button-on" : "radio-button-off"}
-      size={24}
-      color={condition === value ? colors.primary : colors.grey}
-    />
-    <Text style={styles.radioText}>{label}</Text>
-  </TouchableOpacity>
-);
-
-const Checkbox = ({ label, isChecked, onToggle }) => (
-  <TouchableOpacity style={styles.checkboxRow} onPress={onToggle}>
-    <Ionicons
-      name={isChecked ? "checkbox" : "square-outline"}
-      size={24}
-      color={isChecked ? colors.primary : colors.black}
-    />
-    <Text style={styles.checkboxText}>{label}</Text>
-  </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
@@ -467,30 +505,31 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: colors.black,
   },
+  subLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 5,
+    marginTop: 10,
+    color: colors.black,
+  },
   input: {
     backgroundColor: "#F5F5F5",
     padding: 15,
     borderRadius: 8,
     fontSize: 14,
-    color: colors.text,
   },
   row: { flexDirection: "row", justifyContent: "space-between" },
-  radioContainer: { flexDirection: "row", marginTop: 5 },
-  radioRow: { flexDirection: "row", alignItems: "center", marginRight: 20 },
-  radioText: { marginLeft: 5, fontSize: 14 },
-  featuresGrid: { backgroundColor: "#F9F9F9", padding: 10, borderRadius: 8 },
-  column: { flexDirection: "column" },
-  checkboxRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  checkboxText: { marginLeft: 10, fontSize: 14 },
-  inputWithIcon: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    height: 50,
+
+  inspectionSection: {
+    marginTop: 20,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
   },
-  inputIcon: { marginRight: 5 },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", color: colors.primary },
+  helperText: { fontSize: 12, color: colors.grey, marginBottom: 10 },
+
   uploadButton: {
     backgroundColor: "#F5F5F5",
     padding: 15,
@@ -500,19 +539,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   uploadButtonText: { color: colors.grey },
-  textArea: { height: 100, textAlignVertical: "top" },
+
   imageUploadSection: {
     alignItems: "center",
-    marginTop: 10,
-    marginBottom: 10,
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 10,
     backgroundColor: "#f0f0f0",
     padding: 10,
     borderRadius: 8,
+    minHeight: 60,
+    marginTop: 5,
   },
-  imageUploadText: { fontWeight: "bold", fontSize: 16 },
+  imageUploadText: {
+    fontWeight: "bold",
+    fontSize: 14,
+    marginLeft: 10,
+    color: colors.grey,
+  },
+
+  textArea: { height: 100, textAlignVertical: "top" },
   imagesPreviewRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -536,6 +580,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   submitButtonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  inputWithIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    height: 50,
+  },
+  inputIcon: { marginRight: 5 },
+  radioContainer: { flexDirection: "row", marginTop: 5 },
+  radioRow: { flexDirection: "row", alignItems: "center", marginRight: 20 },
+  radioText: { marginLeft: 5, fontSize: 14 },
+  featuresGrid: { backgroundColor: "#F9F9F9", padding: 10, borderRadius: 8 },
+  column: { flexDirection: "column" },
+  checkboxRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
+  checkboxText: { marginLeft: 10, fontSize: 14 },
 });
 
 export default SellCarScreen;

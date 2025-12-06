@@ -18,35 +18,56 @@ import colors from "../constants/colors";
 
 const PriceEvaluationScreen = ({ navigation, route }) => {
   const {
-    estimatedPrice = "26.3 Lac",
-    minPrice = "26.3 Lac",
-    maxPrice = "29.8 Lac",
+    carId,
+    estimatedPrice = "Processing...",
+    minPrice = "N/A",
+    maxPrice = "N/A",
+    // Default to false if we came here from an old flow, but usually SellCar passes it
+    hasInspectionDocs = false,
   } = route.params || {};
 
-  // --- STATE ---
   const [saleModalVisible, setSaleModalVisible] = useState(false);
   const [auctionModalVisible, setAuctionModalVisible] = useState(false);
-
-  // New State for User's Input
   const [userAskingPrice, setUserAskingPrice] = useState("");
 
-  // --- VALIDATION HANDLER ---
   const handleAction = (type) => {
-    // 1. Validation: Check if user entered a price
+    // 1. Basic Price Validation
     if (!userAskingPrice.trim()) {
-      Alert.alert(
-        "Price Required",
-        "Please enter your desired asking price before proceeding."
-      );
+      Alert.alert("Price Required", "Please enter your desired asking price.");
       return;
     }
 
-    // 2. Open the appropriate modal
-    if (type === "sale") {
-      setSaleModalVisible(true);
-    } else {
+    // 2. LOGIC: Auction Requirement Check
+    if (type === "auction") {
+      if (!hasInspectionDocs) {
+        // THE ALERT YOU REQUESTED
+        Alert.alert(
+          "Documents Missing",
+          "You must provide image and pdf to schedule for auction. Without providing those you can only list car for sale.",
+          [
+            { text: "OK", style: "cancel" },
+            {
+              text: "List for Sale Instead",
+              onPress: () => setSaleModalVisible(true),
+            },
+          ]
+        );
+        return;
+      }
+      // If docs exist, proceed to success modal
       setAuctionModalVisible(true);
     }
+    // 3. Sale Logic (Always allowed)
+    else if (type === "sale") {
+      setSaleModalVisible(true);
+    }
+  };
+
+  const finalizeSubmission = () => {
+    // Navigate home after success
+    setSaleModalVisible(false);
+    setAuctionModalVisible(false);
+    navigation.navigate("Home");
   };
 
   return (
@@ -59,7 +80,7 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 50 }}
         >
-          {/* HEADER */}
+          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => navigation.navigate("Home")}>
               <Ionicons name="menu-outline" size={30} color={colors.black} />
@@ -69,48 +90,17 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
               style={styles.headerLogo}
               resizeMode="contain"
             />
-            <TouchableOpacity>
-              <Ionicons
-                name="notifications-outline"
-                size={28}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
+            <View style={{ width: 30 }} />
           </View>
 
-          {/* SEARCH BAR (Visual Only) */}
-          <View style={styles.searchContainer}>
-            <View style={styles.searchBox}>
-              <Ionicons
-                name="search-outline"
-                size={20}
-                color={colors.grey}
-                style={styles.searchIcon}
-              />
-              <TextInput
-                placeholder="Search for your car..."
-                placeholderTextColor={colors.grey}
-                style={styles.searchInput}
-                editable={false}
-              />
-              <Ionicons
-                name="options-outline"
-                size={24}
-                color={colors.primary}
-              />
-            </View>
-          </View>
-
-          {/* SUCCESS MESSAGE */}
+          {/* Success Message */}
           <View style={styles.messageContainer}>
             <Text style={styles.successTitle}>
-              Your car has been successfully registered!
+              Car Registered Successfully!
             </Text>
             <Text style={styles.successSubtitle}>
-              We have saved all your car details.
+              Our AI has evaluated your vehicle.
             </Text>
-
-            {/* Lock Icon Illustration */}
             <View style={styles.iconWrapper}>
               <Ionicons name="lock-closed" size={80} color={colors.primary} />
               <View style={styles.checkBadge}>
@@ -119,35 +109,29 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          {/* --- NEW PRICE RANGE CARD --- */}
+          {/* Price Card */}
           <View style={styles.priceCard}>
-            <Text style={styles.rangeTitle}>Recommended Price Range</Text>
+            <Text style={styles.rangeTitle}>Estimated Market Price</Text>
+            <Text style={styles.bigPrice}>{estimatedPrice}</Text>
 
-            {/* Visual Color Bar */}
             <View style={styles.barContainer}>
               <View style={styles.greenBar} />
               <View style={styles.yellowBar} />
             </View>
 
-            {/* Min/Max Labels */}
             <View style={styles.rangeRow}>
               <View style={{ alignItems: "center" }}>
                 <Text style={styles.rangeLabel}>Min</Text>
-                <Text style={styles.rangeValue}>PKR {minPrice}</Text>
+                <Text style={styles.rangeValue}>{minPrice}</Text>
               </View>
               <View style={{ alignItems: "center" }}>
                 <Text style={styles.rangeLabel}>Max</Text>
-                <Text style={styles.rangeValue}>PKR {maxPrice}</Text>
+                <Text style={styles.rangeValue}>{maxPrice}</Text>
               </View>
             </View>
-
-            <View style={styles.divider} />
-            <Text style={styles.disclaimer}>
-              *Prices can vary depending on the condition
-            </Text>
           </View>
 
-          {/* --- USER INPUT SECTION --- */}
+          {/* User Input */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>Set Your Asking Price:</Text>
             <View style={styles.priceInputWrapper}>
@@ -157,14 +141,13 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
                 placeholder="Enter amount"
                 value={userAskingPrice}
                 onChangeText={setUserAskingPrice}
-                keyboardType="numeric" // CHANGED: Numeric keypad
+                keyboardType="numeric"
               />
             </View>
           </View>
 
-          {/* ACTION BUTTONS */}
-          <Text style={styles.actionTitle}>Would you like to:</Text>
-
+          {/* Action Buttons */}
+          <Text style={styles.actionTitle}>What would you like to do?</Text>
           <View style={styles.actionButtonsRow}>
             <TouchableOpacity
               style={styles.actionButton}
@@ -172,9 +155,7 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
             >
               <Text style={styles.actionButtonText}>List Car for Sale</Text>
             </TouchableOpacity>
-
             <Text style={styles.orText}>or</Text>
-
             <TouchableOpacity
               style={styles.actionButton}
               onPress={() => handleAction("auction")}
@@ -185,9 +166,7 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ================================================= */}
-      {/* --- MODAL 1: LIST FOR SALE CONFIRMATION --- */}
-      {/* ================================================= */}
+      {/* --- MODAL 1: LIST FOR SALE SUCCESS --- */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -200,32 +179,24 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
           onPress={() => setSaleModalVisible(false)}
         >
           <View style={styles.popupContainer}>
-            <View style={{ alignItems: "center", marginTop: -40 }}>
-              <View style={styles.popupIconCircle}>
-                <Ionicons name="bag-check" size={40} color={colors.primary} />
-              </View>
+            <View style={styles.popupIconCircle}>
+              <Ionicons name="bag-check" size={40} color={colors.primary} />
             </View>
-
-            <Text style={styles.popupTitle}>
-              Your selected price has been recorded.
-            </Text>
+            <Text style={styles.popupTitle}>Listed for Sale!</Text>
             <Text style={styles.popupText}>
-              Listing in progress. Your car will appear shortly.
+              Your car is now visible in the marketplace.
             </Text>
-
             <TouchableOpacity
-              onPress={() => setSaleModalVisible(false)}
+              onPress={finalizeSubmission}
               style={styles.thankYouButton}
             >
-              <Text style={styles.thankYouText}>Thank you!</Text>
+              <Text style={styles.thankYouText}>Done</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* ================================================= */}
-      {/* --- MODAL 2: AUCTION SCHEDULE CONFIRMATION --- */}
-      {/* ================================================= */}
+      {/* --- MODAL 2: SCHEDULE AUCTION SUCCESS --- */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -238,25 +209,19 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
           onPress={() => setAuctionModalVisible(false)}
         >
           <View style={styles.popupContainer}>
-            <View style={{ alignItems: "center", marginTop: -40 }}>
-              <View style={styles.popupIconCircle}>
-                <Ionicons name="time" size={40} color={colors.primary} />
-              </View>
+            <View style={styles.popupIconCircle}>
+              <Ionicons name="time" size={40} color={colors.primary} />
             </View>
-
-            <Text style={styles.popupTitle}>
-              Your selected price has been recorded.
-            </Text>
+            <Text style={styles.popupTitle}>Submitted for Review</Text>
             <Text style={styles.popupText}>
-              Our team will contact you shortly via SMS on your registered
-              number to share your auction schedule.
+              Our team will verify your inspection sheet and schedule the
+              auction.
             </Text>
-
             <TouchableOpacity
-              onPress={() => setAuctionModalVisible(false)}
+              onPress={finalizeSubmission}
               style={styles.thankYouButton}
             >
-              <Text style={styles.thankYouText}>Thank you!</Text>
+              <Text style={styles.thankYouText}>Done</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -267,7 +232,6 @@ const PriceEvaluationScreen = ({ navigation, route }) => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
-
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -276,36 +240,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerLogo: { width: 80, height: 40 },
-
-  searchContainer: { paddingHorizontal: 20, marginBottom: 20 },
-  searchBox: {
-    flexDirection: "row",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-  },
-  searchIcon: { marginRight: 10 },
-  searchInput: { flex: 1, fontSize: 16, color: colors.text },
-
   messageContainer: {
     paddingHorizontal: 20,
     alignItems: "center",
     marginBottom: 20,
   },
-  successTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 5,
-  },
+  successTitle: { fontSize: 18, fontWeight: "bold", textAlign: "center" },
   successSubtitle: {
     fontSize: 14,
     color: colors.grey,
     textAlign: "center",
     marginBottom: 20,
   },
-
   iconWrapper: { position: "relative", marginTop: 10 },
   checkBadge: {
     position: "absolute",
@@ -318,55 +264,39 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
   },
 
-  // --- NEW PRICE CARD STYLES ---
   priceCard: {
     backgroundColor: "#F5F5F5",
     marginHorizontal: 20,
     borderRadius: 15,
     padding: 20,
     alignItems: "center",
-    marginTop: 10,
   },
-  rangeTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: colors.black,
+  rangeTitle: { fontSize: 14, color: colors.grey, marginBottom: 5 },
+  bigPrice: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: colors.primary,
+    marginBottom: 15,
   },
   barContainer: {
     flexDirection: "row",
     width: "100%",
-    height: 10,
+    height: 8,
     borderRadius: 5,
     overflow: "hidden",
     marginBottom: 10,
   },
   greenBar: { flex: 2, backgroundColor: "#76C839" },
   yellowBar: { flex: 1, backgroundColor: "#F4D03F" },
-
   rangeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-    marginBottom: 10,
   },
-  rangeLabel: { fontSize: 12, color: colors.grey, textAlign: "center" },
+  rangeLabel: { fontSize: 12, color: colors.grey },
   rangeValue: { fontSize: 16, fontWeight: "bold", color: colors.black },
 
-  divider: {
-    width: "100%",
-    height: 1,
-    backgroundColor: "#D0D0D0",
-    marginVertical: 10,
-  },
-  disclaimer: { fontSize: 12, color: colors.grey, fontStyle: "italic" },
-
-  // --- NEW INPUT SECTION STYLES ---
-  inputSection: {
-    marginHorizontal: 20,
-    marginTop: 30,
-    marginBottom: 20,
-  },
+  inputSection: { marginHorizontal: 20, marginTop: 30, marginBottom: 20 },
   inputLabel: {
     fontSize: 16,
     fontWeight: "bold",
@@ -396,9 +326,8 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // --- ACTION BUTTONS ---
   actionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 15,
@@ -426,7 +355,7 @@ const styles = StyleSheet.create({
   },
   orText: { color: colors.grey, fontSize: 16 },
 
-  // --- MODAL STYLES ---
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -435,15 +364,11 @@ const styles = StyleSheet.create({
   },
   popupContainer: {
     width: "85%",
-    backgroundColor: "#E8F4F8", // CHANGED: Very Light Blue for better contrast
+    backgroundColor: "#E8F4F8",
     borderRadius: 15,
     padding: 25,
     alignItems: "center",
     elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
   },
   popupIconCircle: {
     backgroundColor: "#fff",
@@ -469,14 +394,8 @@ const styles = StyleSheet.create({
     color: "#333",
     lineHeight: 22,
   },
-  thankYouButton: {
-    marginTop: 10,
-  },
-  thankYouText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.black,
-  },
+  thankYouButton: { marginTop: 10 },
+  thankYouText: { fontSize: 18, fontWeight: "bold", color: colors.black },
 });
 
 export default PriceEvaluationScreen;
