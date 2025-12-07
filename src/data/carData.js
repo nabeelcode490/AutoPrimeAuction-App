@@ -1,4 +1,5 @@
 export const liveAuctions = [
+  // THE CAR CURRENTLY ON STAGE (Index 0)
   {
     id: "1",
     name: "Ford Mustang 1969",
@@ -6,11 +7,10 @@ export const liveAuctions = [
     price: "PKR 18,00,000",
     image:
       "https://images.unsplash.com/photo-1584345604476-8ec5e12e42dd?auto=format&fit=crop&w=800&q=80",
-    // Added Dummy Inspection Sheet URL
-    inspectionSheet:
-      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
     status: "Live",
+    currentBid: "18,00,000",
   },
+  // THE CARS IN QUEUE (Up Next)
   {
     id: "2",
     name: "Toyota Supra MK4",
@@ -18,9 +18,8 @@ export const liveAuctions = [
     price: "PKR 45,00,000",
     image:
       "https://images.unsplash.com/photo-1605515298946-d0bfdfdbdd6d?auto=format&fit=crop&w=800&q=80",
-    inspectionSheet:
-      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
-    status: "Live",
+    status: "Queue",
+    estPrice: "45-50 Lacs",
   },
   {
     id: "3",
@@ -29,70 +28,37 @@ export const liveAuctions = [
     price: "PKR 65,00,000",
     image:
       "https://images.unsplash.com/photo-1606016159991-dfe4f2746ad5?auto=format&fit=crop&w=800&q=80",
-    inspectionSheet:
-      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
-    status: "Live",
+    status: "Queue",
+    estPrice: "65 Lacs",
   },
   {
     id: "4",
     name: "Audi A5 Sportback",
     model: "S-Line",
-    price: "PKR 1,20,00,000",
+    price: "PKR 1.2 Crore",
     image:
       "https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?auto=format&fit=crop&w=800&q=80",
-    inspectionSheet:
-      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
-    status: "Live",
-  },
-  {
-    id: "5",
-    name: "Toyota Fortuner",
-    model: "Legender 4x4",
-    price: "PKR 1,80,00,000",
-    image:
-      "https://images.unsplash.com/photo-1631751187560-59d7305c5416?auto=format&fit=crop&w=800&q=80",
-    inspectionSheet:
-      "https://i.pinimg.com/736x/27/93/29/279329707255fb33679d63493df40620.jpg",
-    status: "Live",
+    status: "Queue",
+    estPrice: "1.2 Crore",
   },
 ];
 
 export const scheduledAuctions = [
   {
-    id: "6",
-    name: "Mini Cooper S",
-    price: "PKR 15,00,000",
-    image:
-      "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=800&q=80",
+    id: "101",
+    title: "Weekly Grand Auction", // Group of cars
     date: "June 20, 3:00 PM",
-    status: "Scheduled",
-  },
-  {
-    id: "7",
-    name: "Suzuki Swift GLX",
-    price: "PKR 42,00,000",
-    image:
-      "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=800&q=80",
-    date: "June 22, 5:00 PM",
-    status: "Scheduled",
-  },
-  {
-    id: "8",
-    name: "Mercedes C200",
-    price: "PKR 1,10,00,000",
-    image:
-      "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&w=800&q=80",
-    date: "June 24, 2:00 PM",
-    status: "Scheduled",
-  },
-  {
-    id: "9",
-    name: "Tesla Model 3",
-    price: "PKR 1,40,00,000",
     image:
       "https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&w=800&q=80",
+    carCount: 12,
+  },
+  {
+    id: "102",
+    title: "Supercar Sunday",
     date: "June 25, 6:00 PM",
-    status: "Scheduled",
+    image:
+      "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=800&q=80",
+    carCount: 5,
   },
 ];
 

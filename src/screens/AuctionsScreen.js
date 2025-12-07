@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
   Modal,
@@ -15,35 +16,35 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import CarCard from "../components/CarCard";
 import { auth, db } from "../config/firebase";
 import colors from "../constants/colors";
+// Import data
 import { liveAuctions, scheduledAuctions } from "../data/carData";
 
-// TODO: REPLACE WITH YOUR TEST CAR ID (THE ONE YOU SEEDED)
+const { width } = Dimensions.get("window");
+
+// TODO: REPLACE WITH YOUR TEST CAR ID
 const MY_TEST_CAR_ID = "x6gH4LVO9jzEvc3PddwI";
 
 const AuctionsScreen = ({ navigation }) => {
+  // 1. Separate the "On Stage" car from the "Up Next" cars
   const currentLiveCar = liveAuctions[0];
+  const upNextCars = liveAuctions.slice(1); // All cars except the first one
 
   const [modalVisible, setModalVisible] = useState(false);
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userAccessCode, setUserAccessCode] = useState(null); // Store the user's correct code
+  const [userAccessCode, setUserAccessCode] = useState(null);
 
-  // --- JOIN LOGIC ---
+  // --- JOIN LOGIC (UNCHANGED) ---
   const handleJoinAuction = async () => {
     const user = auth.currentUser;
-
     if (!user) {
       Alert.alert("Login Required", "Please login to join the auction.");
       return;
     }
-
     setLoading(true);
-
     try {
-      // 1. Check if user has a request
       const q = query(
         collection(db, "auction_requests"),
         where("userId", "==", user.uid)
@@ -51,20 +52,17 @@ const AuctionsScreen = ({ navigation }) => {
       const querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
-        // No request found -> Send to Registration
         setLoading(false);
         navigation.navigate("AuctionRegistration");
       } else {
         const requestData = querySnapshot.docs[0].data();
         setLoading(false);
-
         if (requestData.status === "pending") {
           Alert.alert(
             "Pending",
             "Your registration is under review. Please wait for approval."
           );
         } else if (requestData.status === "approved") {
-          // User is approved! Save their code and show modal.
           setUserAccessCode(requestData.accessCode);
           setModalVisible(true);
         } else {
@@ -82,12 +80,9 @@ const AuctionsScreen = ({ navigation }) => {
   };
 
   const verifyCode = () => {
-    // Check if input matches the code from Firestore
     if (accessCodeInput === userAccessCode) {
       setModalVisible(false);
       setAccessCodeInput("");
-
-      // Navigate to the Live Car (using your seeded ID)
       navigation.navigate("LiveBidding", {
         item: { id: MY_TEST_CAR_ID },
         mode: "bid",
@@ -97,12 +92,48 @@ const AuctionsScreen = ({ navigation }) => {
     }
   };
 
+  // --- RENDER HELPERS ---
+
+  // 1. Up Next Card (Small horizontal cards)
+  const renderUpNextItem = ({ item }) => (
+    <View style={styles.upNextCard}>
+      <View style={styles.nextBadge}>
+        <Text style={styles.nextBadgeText}>Next</Text>
+      </View>
+      <Image source={{ uri: item.image }} style={styles.upNextImage} />
+      <View style={styles.upNextContent}>
+        <Text style={styles.upNextTitle} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={styles.upNextSubtitle}>Est: {item.price}</Text>
+      </View>
+    </View>
+  );
+
+  // 2. Schedule Card (Wide vertical cards)
+  const renderScheduleItem = (item) => (
+    <View key={item.id} style={styles.scheduleCard}>
+      <Image source={{ uri: item.image }} style={styles.scheduleImage} />
+      <View style={styles.scheduleContent}>
+        <Text style={styles.scheduleTitle}>{item.title}</Text>
+        <Text style={styles.scheduleDate}>Start: {item.date}</Text>
+        <Text style={styles.scheduleCount}>{item.carCount} Cars Listed</Text>
+        <TouchableOpacity style={styles.remindButton}>
+          <Text style={styles.remindButtonText}>Remind me</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 50 }}
+      >
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate("Home")}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="menu-outline" size={30} color={colors.black} />
           </TouchableOpacity>
           <Image
@@ -119,22 +150,56 @@ const AuctionsScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* LIVE NOW SECTION */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.liveIndicatorRow}>
-            <View style={styles.pulsingDot} />
-            <Text style={styles.sectionTitle}>Live Now</Text>
-          </View>
+        {/* --- SEARCH BAR (Optional, mimicking your screenshot) --- */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search"
+            size={20}
+            color="#999"
+            style={{ marginRight: 8 }}
+          />
+          <TextInput placeholder="Search for your car..." style={{ flex: 1 }} />
+          <Ionicons name="options-outline" size={24} color={colors.primary} />
         </View>
 
-        {/* DUMMY UI FOR DEMO (Clicking Join triggers logic) */}
-        <View style={styles.heroContainer}>
+        {/* --- SECTION 1: LIVE NOW --- */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.pulsingDot} />
+          <Text style={styles.sectionTitle}>Live Now</Text>
+        </View>
+        <Text style={styles.locationSubText}>Happening in Lahore Center</Text>
+
+        {/* BIG LIVE CARD */}
+        <View style={styles.liveCard}>
           <Image
             source={{ uri: currentLiveCar.image }}
-            style={styles.heroImage}
+            style={styles.liveImage}
           />
-          <View style={styles.heroDetails}>
-            <Text style={styles.heroTitle}>{currentLiveCar.name}</Text>
+
+          <View style={styles.liveBadge}>
+            <Ionicons
+              name="radio-outline"
+              size={16}
+              color="#fff"
+              style={{ marginRight: 4 }}
+            />
+            <Text style={styles.liveBadgeText}>LIVE</Text>
+          </View>
+
+          <View style={styles.liveContent}>
+            <View style={styles.liveRow}>
+              <View>
+                <Text style={styles.liveCarName}>{currentLiveCar.name}</Text>
+                <Text style={styles.liveCarModel}>{currentLiveCar.model}</Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={styles.currentBidLabel}>Current Bid</Text>
+                <Text style={styles.currentBidValue}>
+                  {currentLiveCar.currentBid}
+                </Text>
+              </View>
+            </View>
+
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={styles.outlineButton}
@@ -162,10 +227,33 @@ const AuctionsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* OTHER LISTS ... (Keep your existing FlatLists here) */}
+        {/* --- SECTION 2: UP NEXT --- */}
+        <View style={[styles.sectionHeader, { marginTop: 25 }]}>
+          <Text style={styles.sectionTitle}>Up Next</Text>
+        </View>
+        <Text style={styles.locationSubText}>Coming to stage soon</Text>
+
+        <FlatList
+          data={upNextCars}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          renderItem={renderUpNextItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10 }}
+        />
+
+        {/* --- SECTION 3: AUCTION SCHEDULE --- */}
+        <View style={[styles.sectionHeader, { marginTop: 25 }]}>
+          <Text style={styles.sectionTitle}>Auction Schedule</Text>
+        </View>
+        <Text style={styles.locationSubText}>Upcoming Events</Text>
+
+        <View style={styles.scheduleList}>
+          {scheduledAuctions.map((item) => renderScheduleItem(item))}
+        </View>
       </ScrollView>
 
-      {/* ACCESS CODE MODAL */}
+      {/* ACCESS CODE MODAL (UNCHANGED) */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -203,39 +291,93 @@ const AuctionsScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#fff" },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 20,
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   headerLogo: { width: 80, height: 40 },
-  sectionHeader: { paddingHorizontal: 20, marginBottom: 10 },
-  liveIndicatorRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+
+  searchContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F5F5F5",
+    marginHorizontal: 20,
+    borderRadius: 10,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+
+  // Titles
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    gap: 8,
+  },
   pulsingDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: "red",
   },
-  sectionTitle: { fontSize: 18, fontWeight: "bold" },
-  heroContainer: {
-    margin: 20,
+  sectionTitle: { fontSize: 20, fontWeight: "bold", color: colors.black },
+  locationSubText: {
+    fontSize: 13,
+    color: colors.grey,
+    marginLeft: 20,
+    marginBottom: 10,
+  },
+
+  // --- LIVE CARD STYLES ---
+  liveCard: {
+    marginHorizontal: 20,
     backgroundColor: "#fff",
     borderRadius: 15,
-    elevation: 5,
+    // Heavy Shadow
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+    marginBottom: 5,
   },
-  heroImage: {
+  liveImage: {
     width: "100%",
-    height: 150,
+    height: 200,
     borderTopLeftRadius: 15,
     borderTopRightRadius: 15,
   },
-  heroDetails: { padding: 15 },
-  heroTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
+  liveBadge: {
+    position: "absolute",
+    top: 15,
+    right: 15,
+    backgroundColor: "#E74C3C", // Red
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 5,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  liveBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
+  liveContent: { padding: 15 },
+  liveRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
+  liveCarName: { fontSize: 18, fontWeight: "bold", color: colors.black },
+  liveCarModel: { fontSize: 14, color: colors.grey },
+  currentBidLabel: { fontSize: 12, color: colors.grey },
+  currentBidValue: { fontSize: 18, fontWeight: "bold", color: colors.primary },
+
   buttonRow: { flexDirection: "row", gap: 10 },
   outlineButton: {
     flex: 1,
-    padding: 10,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: colors.primary,
     borderRadius: 8,
@@ -244,13 +386,84 @@ const styles = StyleSheet.create({
   outlineButtonText: { color: colors.primary, fontWeight: "bold" },
   fillButton: {
     flex: 1,
-    padding: 10,
+    paddingVertical: 12,
     backgroundColor: colors.primary,
     borderRadius: 8,
     alignItems: "center",
   },
   fillButtonText: { color: "#fff", fontWeight: "bold" },
-  // Modal Styles
+
+  // --- UP NEXT CARD STYLES ---
+  upNextCard: {
+    width: 140,
+    marginRight: 15,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    marginBottom: 10, // room for shadow
+  },
+  nextBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    zIndex: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  nextBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  upNextImage: {
+    width: "100%",
+    height: 90,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  upNextContent: { padding: 10 },
+  upNextTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: colors.black,
+    marginBottom: 2,
+  },
+  upNextSubtitle: { fontSize: 12, color: colors.grey },
+
+  // --- SCHEDULE CARD STYLES ---
+  scheduleList: { paddingHorizontal: 20 },
+  scheduleCard: {
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    marginBottom: 20,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    overflow: "hidden",
+  },
+  scheduleImage: { width: "100%", height: 140 },
+  scheduleContent: { padding: 15 },
+  scheduleTitle: { fontSize: 18, fontWeight: "bold", color: colors.black },
+  scheduleDate: { fontSize: 14, color: colors.grey, marginVertical: 4 },
+  scheduleCount: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: colors.primary,
+    marginBottom: 15,
+  },
+  remindButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  remindButtonText: { color: "#fff", fontWeight: "bold" },
+
+  // --- MODAL STYLES (Existing) ---
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
