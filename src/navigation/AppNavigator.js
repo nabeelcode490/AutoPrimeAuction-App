@@ -15,6 +15,7 @@ import ProfileScreen from "../screens/ProfileScreen";
 import SellCarScreen from "../screens/SellCarScreen"; // <--- Import
 import SignupScreen from "../screens/SignupScreen"; // <--
 import VerificationScreen from "../screens/VerificationScreen"; // <--- 1. Import this
+import EmailVerificationScreen from "../screens/EmailVerificationScreen"; // <--- NEW IMPORT
 import WelcomeScreen from "../screens/WelcomeScreen";
 
 const Stack = createNativeStackNavigator();
@@ -29,6 +30,10 @@ const AppNavigator = () => {
         <Stack.Screen name="Signup" component={SignupScreen} />
         {/* 2. Add the Verification Screen here */}
         <Stack.Screen name="Verification" component={VerificationScreen} />
+        <Stack.Screen
+          name="EmailVerification"
+          component={EmailVerificationScreen}
+        />
         {/* The New Main Dashboard, This is the screen for Guests/Users*/}
         <Stack.Screen name="Home" component={HomeScreen} />
         {/* The Page for Live/Scheduled Auctions */}

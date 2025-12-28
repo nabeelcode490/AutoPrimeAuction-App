@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth"; // <--- Added Auth Imports
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -29,20 +30,63 @@ const MY_TEST_CAR_ID = "x6gH4LVO9jzEvc3PddwI";
 const AuctionsScreen = ({ navigation }) => {
   // 1. Separate the "On Stage" car from the "Up Next" cars
   const currentLiveCar = liveAuctions[0];
-  const upNextCars = liveAuctions.slice(1); // All cars except the first one
+  const upNextCars = liveAuctions.slice(1);
 
-  const [modalVisible, setModalVisible] = useState(false);
+  // --- STATE ---
+  const [modalVisible, setModalVisible] = useState(false); // For Access Code
+  const [menuVisible, setMenuVisible] = useState(false); // For Sidebar Menu <--- ADDED
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [userAccessCode, setUserAccessCode] = useState(null);
+  const [user, setUser] = useState(null); // Track User
 
-  // --- JOIN LOGIC (UNCHANGED) ---
+  // --- CHECK AUTH STATUS ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return unsubscribe;
+  }, []);
+
+  // --- MENU HANDLERS ---
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await signOut(auth);
+            setMenuVisible(false);
+            navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
+          } catch (error) {
+            console.error("Logout Error:", error);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleInspectionRequest = () => {
+    setMenuVisible(false);
+    Alert.alert("Info", "Inspection request feature coming soon!");
+  };
+
+  // --- JOIN LOGIC (UPDATED) ---
   const handleJoinAuction = async () => {
-    const user = auth.currentUser;
+    // 1. GUEST CHECK (The Fix)
     if (!user) {
-      Alert.alert("Login Required", "Please login to join the auction.");
+      Alert.alert("Login Required", "Please login to join the auction.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Login",
+          onPress: () => navigation.navigate("Login"), // <--- Navigates to Login
+        },
+      ]);
       return;
     }
+
     setLoading(true);
     try {
       const q = query(
@@ -92,9 +136,7 @@ const AuctionsScreen = ({ navigation }) => {
     }
   };
 
-  // --- RENDER HELPERS ---
-
-  // 1. Up Next Card (Small horizontal cards)
+  // --- RENDER HELPERS (Unchanged) ---
   const renderUpNextItem = ({ item }) => (
     <View style={styles.upNextCard}>
       <View style={styles.nextBadge}>
@@ -110,7 +152,6 @@ const AuctionsScreen = ({ navigation }) => {
     </View>
   );
 
-  // 2. Schedule Card (Wide vertical cards)
   const renderScheduleItem = (item) => (
     <View key={item.id} style={styles.scheduleCard}>
       <Image source={{ uri: item.image }} style={styles.scheduleImage} />
@@ -125,45 +166,68 @@ const AuctionsScreen = ({ navigation }) => {
     </View>
   );
 
+  // --- MENU ITEM COMPONENT ---
+  const MenuItem = ({ icon, label, onPress, isBold }) => (
+    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+      <Ionicons
+        name={icon}
+        size={24}
+        color={colors.primary}
+        style={{ marginRight: 15 }}
+      />
+      <Text style={[styles.menuText, isBold && styles.menuTextBold]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 50 }}
       >
-        {/* HEADER */}
+        {/* HEADER (UPDATED) */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          {/* Menu Button -> Opens Modal now */}
+          <TouchableOpacity onPress={() => setMenuVisible(true)}>
             <Ionicons name="menu-outline" size={30} color={colors.black} />
           </TouchableOpacity>
+
           <Image
             source={require("../assets/apaHeaderLogo.png")}
             style={styles.headerLogo}
             resizeMode="contain"
           />
-          <TouchableOpacity>
-            <Ionicons
-              name="notifications-outline"
-              size={28}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
+
+          {/* Right Icon: Notification (User) or Sign In (Guest) */}
+          {user ? (
+            <TouchableOpacity>
+              <Ionicons
+                name="notifications-outline"
+                size={28}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.signInHeaderButton}
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.signInHeaderText}>Sign In</Text>
+              <Ionicons
+                name="log-in-outline"
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* --- SEARCH BAR (Optional, mimicking your screenshot) --- */}
-        <View style={styles.searchContainer}>
-          <Ionicons
-            name="search"
-            size={20}
-            color="#999"
-            style={{ marginRight: 8 }}
-          />
-          <TextInput placeholder="Search for your car..." style={{ flex: 1 }} />
-          <Ionicons name="options-outline" size={24} color={colors.primary} />
-        </View>
+        {/* --- SEARCH BAR REMOVED HERE --- */}
 
         {/* --- SECTION 1: LIVE NOW --- */}
-        <View style={styles.sectionHeader}>
+        <View style={[styles.sectionHeader, { marginTop: 10 }]}>
           <View style={styles.pulsingDot} />
           <Text style={styles.sectionTitle}>Live Now</Text>
         </View>
@@ -253,14 +317,163 @@ const AuctionsScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* ACCESS CODE MODAL (UNCHANGED) */}
+      {/* --- SIDE MENU MODAL (ADDED) --- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={menuVisible}
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={styles.menuDrawer}
+            onPress={() => {}}
+          >
+            {/* Header */}
+            <View style={styles.menuHeader}>
+              <TouchableOpacity onPress={() => setMenuVisible(false)}>
+                <Ionicons name="close" size={30} color={colors.black} />
+              </TouchableOpacity>
+              <Text style={styles.menuTitle}>Menu</Text>
+            </View>
+
+            <ScrollView style={styles.menuItemsContainer}>
+              <MenuItem
+                icon="home-outline"
+                label="Home"
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("Home");
+                }}
+                isBold
+              />
+              <MenuItem
+                icon="gavel-outline"
+                label="Auctions"
+                onPress={() => setMenuVisible(false)} // Stay here
+                isBold
+              />
+              <MenuItem
+                icon="list-outline"
+                label="Listings"
+                onPress={() => setMenuVisible(false)}
+                isBold
+              />
+              <MenuItem
+                icon="add-circle-outline"
+                label="Post Ad"
+                onPress={() => setMenuVisible(false)}
+                isBold
+              />
+              <MenuItem
+                icon="person-outline"
+                label="Profile"
+                onPress={() => {
+                  if (user) {
+                    setMenuVisible(false);
+                    navigation.navigate("Profile");
+                  } else {
+                    Alert.alert(
+                      "Login Required",
+                      "Please login to view profile."
+                    );
+                  }
+                }}
+                isBold
+              />
+              <MenuItem
+                icon="checkbox-outline"
+                label="Get Your Car Inspected"
+                onPress={handleInspectionRequest}
+                isBold
+              />
+
+              <TouchableOpacity
+                style={styles.registerAuctionButton}
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("AuctionRegistration");
+                }}
+              >
+                <Text style={styles.sellCarText}>Register for Auction</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={20}
+                  color="#fff"
+                  style={{ marginLeft: 10 }}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.sellCarButton}
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("SellCar");
+                }}
+              >
+                <Ionicons name="car-sport" size={22} color="#fff" />
+                <Text style={styles.sellCarText}>Sell Your Car</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={20}
+                  color="#fff"
+                  style={{ marginLeft: 10 }}
+                />
+              </TouchableOpacity>
+
+              <View style={{ height: 20 }} />
+            </ScrollView>
+
+            <View style={styles.menuBottomContainer}>
+              <MenuItem
+                icon="thumbs-up-outline"
+                label="Feedback"
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("Feedback");
+                }}
+              />
+              <MenuItem
+                icon="mail-outline"
+                label="Contact Us"
+                onPress={() => {
+                  setMenuVisible(false);
+                  navigation.navigate("ContactUs");
+                }}
+              />
+
+              {user && (
+                <TouchableOpacity
+                  style={styles.logoutButton}
+                  onPress={handleLogout}
+                >
+                  <Ionicons
+                    name="log-out-outline"
+                    size={24}
+                    color="#D32F2F"
+                    style={{ marginRight: 15 }}
+                  />
+                  <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* --- ACCESS CODE MODAL (UNCHANGED) --- */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.accessModalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Enter Access Code</Text>
             <Text style={styles.modalSubtitle}>
@@ -300,16 +513,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerLogo: { width: 80, height: 40 },
-
-  searchContainer: {
-    flexDirection: "row",
-    backgroundColor: "#F5F5F5",
-    marginHorizontal: 20,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-    marginBottom: 20,
-  },
+  signInHeaderButton: { flexDirection: "row", alignItems: "center", gap: 5 },
+  signInHeaderText: { color: colors.primary, fontWeight: "bold", fontSize: 16 },
 
   // Titles
   sectionHeader: {
@@ -463,8 +668,8 @@ const styles = StyleSheet.create({
   },
   remindButtonText: { color: "#fff", fontWeight: "bold" },
 
-  // --- MODAL STYLES (Existing) ---
-  modalOverlay: {
+  // --- ACCESS MODAL STYLES (Existing) ---
+  accessModalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
@@ -501,6 +706,70 @@ const styles = StyleSheet.create({
   modalButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   closeButton: { padding: 10 },
   closeButtonText: { color: colors.grey, fontWeight: "600" },
+
+  // --- SIDE MENU STYLES (ADDED) ---
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    flexDirection: "row",
+  },
+  menuDrawer: {
+    width: "75%",
+    backgroundColor: "#F0F8FF",
+    height: "100%",
+    padding: 25,
+    paddingTop: 50,
+  },
+  menuHeader: { flexDirection: "row", alignItems: "center", marginBottom: 30 },
+  menuTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: colors.primary,
+    marginLeft: 15,
+  },
+  menuItemsContainer: { marginTop: 10, flex: 1 },
+  menuItem: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
+  menuText: { fontSize: 18, color: colors.primary, fontWeight: "500" },
+  menuTextBold: { fontWeight: "bold" },
+  registerAuctionButton: {
+    marginTop: 15,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 30,
+    elevation: 5,
+  },
+  sellCarButton: {
+    marginTop: 10,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 30,
+    elevation: 5,
+  },
+  sellCarText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginLeft: 10,
+  },
+  menuBottomContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "#BDC3C7",
+    paddingTop: 20,
+    marginBottom: 20,
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  logoutText: { fontSize: 18, color: "#D32F2F", fontWeight: "bold" },
 });
 
 export default AuctionsScreen;

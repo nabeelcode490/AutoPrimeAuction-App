@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { createUserWithEmailAndPassword } from "firebase/auth"; // Import Auth function
-import { doc, setDoc } from "firebase/firestore"; // Import Database functions
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth, db } from "../config/firebase"; // Import our configured Firebase
+import { auth, db } from "../config/firebase";
 
 import CustomInput from "../components/CustomInput";
 import colors from "../constants/colors";
@@ -24,20 +27,81 @@ const SignupScreen = ({ navigation }) => {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
 
-  // New state to show a loading spinner
   const [loading, setLoading] = useState(false);
 
+  // --- 1. SMART PHONE INPUT HANDLER (Auto-Hyphen) ---
+  const handlePhoneChange = (text) => {
+    // Remove any non-numeric characters for processing
+    let cleaned = text.replace(/[^0-9]/g, "");
+
+    // Enforce "03" start constraint (optional: strictly prevent typing if not 03)
+    // For now, we allow typing but will validate it on submit.
+
+    // Auto-insert hyphen after 4th digit
+    if (cleaned.length > 4) {
+      cleaned = cleaned.slice(0, 4) + "-" + cleaned.slice(4);
+    }
+
+    // Limit total length (03xx-xxxxxxx is 12 chars)
+    if (cleaned.length > 12) {
+      cleaned = cleaned.slice(0, 12);
+    }
+
+    setPhone(cleaned);
+  };
+
+  // --- 2. SMART NAME INPUT HANDLER (No Numbers) ---
+  const handleNameChange = (text) => {
+    // Regex: Only allow Letters (a-z, A-Z) and Spaces
+    if (/^[a-zA-Z\s]*$/.test(text)) {
+      setFullName(text);
+    }
+    // If text contains numbers/symbols, we just ignore the input (don't update state)
+  };
+
   const onRegisterPressed = async () => {
-    // 1. Basic Validation
+    // --- 3. STRICT VALIDATIONS ---
+
+    // Check Empty Fields
     if (!fullName || !email || !phone || !password) {
       Alert.alert("Error", "Please fill in all fields.");
       return;
     }
 
-    setLoading(true); // Start spinning
+    // Check Email Format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert(
+        "Invalid Email",
+        "Please enter a valid email address (e.g. ali@gmail.com)."
+      );
+      return;
+    }
+
+    // Check Phone Format (Must be 03xx-xxxxxxx)
+    // Logic: Must start with '03', have a hyphen at index 4, and be 12 chars long
+    const phoneRegex = /^03\d{2}-\d{7}$/;
+    if (!phoneRegex.test(phone)) {
+      Alert.alert(
+        "Invalid Phone",
+        "Phone number must start with '03' and follow the format 03xx-xxxxxxx."
+      );
+      return;
+    }
+
+    // Check Password Length
+    if (password.length < 6) {
+      Alert.alert(
+        "Weak Password",
+        "Password must be at least 6 characters long."
+      );
+      return;
+    }
+
+    setLoading(true);
 
     try {
-      // 2. Create User in Firebase Authentication
+      // Create User
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -45,42 +109,43 @@ const SignupScreen = ({ navigation }) => {
       );
       const user = userCredential.user;
 
-      // 3. Save Extra Data (Name, Phone) to Firestore Database
-      // We use the 'uid' (User ID) from Auth to link the database record
+      // Save to Firestore
       await setDoc(doc(db, "users", user.uid), {
-        fullName: fullName,
-        email: email,
+        fullName: fullName.trim(), // Trim extra spaces
+        email: email.toLowerCase(), // Save as lowercase
         phone: phone,
         uid: user.uid,
         createdAt: new Date(),
-        role: "buyer", // Default role
+        role: "buyer",
       });
 
-      console.log("User Account Created:", user.uid);
-      setLoading(false); // Stop spinning
+      // Send Verification Email
+      await sendEmailVerification(user);
 
-      // 4. Navigate to Verification (or Home)
-      // For now, we keep your flow going to Verification
-      Alert.alert("Success", "Account created successfully!", [
-        { text: "OK", onPress: () => navigation.navigate("Verification") },
-      ]);
+      setLoading(false);
+
+      // Navigate
+      Alert.alert(
+        "Account Created",
+        "Please check your email to verify your account.",
+        [
+          {
+            text: "OK",
+            onPress: () =>
+              navigation.navigate("EmailVerification", { email: email }),
+          },
+        ]
+      );
     } catch (error) {
-      setLoading(false); // Stop spinning on error
+      setLoading(false);
       console.error("Signup Error:", error);
 
-      // Show a friendly error message
       let message = error.message;
       if (message.includes("email-already-in-use")) {
         message = "This email is already registered.";
-      } else if (message.includes("weak-password")) {
-        message = "Password should be at least 6 characters.";
       }
       Alert.alert("Registration Failed", message);
     }
-  };
-
-  const onSignInPressed = () => {
-    navigation.navigate("Login");
   };
 
   return (
@@ -89,7 +154,6 @@ const SignupScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContainer}
       >
-        {/* LOGO SECTION */}
         <View style={styles.logoContainer}>
           <Image
             source={require("../assets/apaHeaderLogo.png")}
@@ -101,28 +165,32 @@ const SignupScreen = ({ navigation }) => {
         <Text style={styles.title}>Sign Up</Text>
         <Text style={styles.subtitle}>Bid. Win. Drive.</Text>
 
-        {/* INPUTS */}
+        {/* FULL NAME - With Number Blocking */}
         <CustomInput
           iconName="person-outline"
           placeholder="Full name"
           value={fullName}
-          setValue={setFullName}
+          setValue={handleNameChange} // Use our smart handler
         />
 
+        {/* EMAIL - Auto Lowercase & Email Keyboard */}
         <CustomInput
           iconName="mail-outline"
           placeholder="Email address"
           value={email}
           setValue={setEmail}
           keyboardType="email-address"
+          autoCapitalize="none" // <--- Prevents auto-capitalization
         />
 
+        {/* PHONE - With Masking & Placeholder */}
         <CustomInput
           iconName="call-outline"
-          placeholder="Phone number"
+          placeholder="Phone No (03xx-1234567)"
           value={phone}
-          setValue={setPhone}
+          setValue={handlePhoneChange} // Use our smart handler
           keyboardType="phone-pad"
+          maxLength={12} // Hard limit length
         />
 
         <CustomInput
@@ -136,7 +204,7 @@ const SignupScreen = ({ navigation }) => {
         <TouchableOpacity
           style={styles.registerButton}
           onPress={onRegisterPressed}
-          disabled={loading} // Disable button while loading
+          disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color={colors.white} />
@@ -145,6 +213,7 @@ const SignupScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
 
+        {/* ... (Rest of UI: Dividers, Social Icons, Footer) remains same ... */}
         <View style={styles.dividerContainer}>
           <View style={styles.line} />
           <Text style={styles.orText}>Or</Text>
@@ -176,7 +245,7 @@ const SignupScreen = ({ navigation }) => {
 
         <View style={styles.footerContainer}>
           <Text style={styles.footerText}>Already have an account? </Text>
-          <TouchableOpacity onPress={onSignInPressed}>
+          <TouchableOpacity onPress={() => navigation.navigate("Login")}>
             <Text style={styles.signInLink}>Sign In</Text>
           </TouchableOpacity>
         </View>
@@ -186,35 +255,17 @@ const SignupScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F9F9F9",
-  },
-  scrollContainer: {
-    padding: 20,
-    alignItems: "center",
-    paddingTop: 30,
-  },
-  logoContainer: {
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  logoImage: {
-    width: 120,
-    height: 80,
-    marginBottom: 10,
-  },
+  safeArea: { flex: 1, backgroundColor: "#F9F9F9" },
+  scrollContainer: { padding: 20, alignItems: "center", paddingTop: 30 },
+  logoContainer: { alignItems: "center", marginBottom: 20 },
+  logoImage: { width: 120, height: 80, marginBottom: 10 },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     color: colors.black,
     marginBottom: 5,
   },
-  subtitle: {
-    fontSize: 14,
-    color: colors.grey,
-    marginBottom: 20,
-  },
+  subtitle: { fontSize: 14, color: colors.grey, marginBottom: 20 },
   registerButton: {
     backgroundColor: colors.primary,
     width: "100%",
@@ -223,50 +274,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginVertical: 20,
   },
-  registerButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: "bold",
-  },
+  registerButtonText: { color: colors.white, fontSize: 18, fontWeight: "bold" },
   dividerContainer: {
     flexDirection: "row",
     alignItems: "center",
     width: "80%",
     marginVertical: 10,
   },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.grey,
-    opacity: 0.5,
-  },
-  orText: {
-    marginHorizontal: 10,
-    color: colors.grey,
-  },
-  socialText: {
-    color: colors.primary,
-    marginBottom: 15,
-    fontWeight: "600",
-  },
-  socialContainer: {
-    flexDirection: "row",
-    marginBottom: 20,
-  },
-  socialIcon: {
-    marginHorizontal: 10,
-  },
-  footerContainer: {
-    flexDirection: "row",
-    marginBottom: 20,
-  },
-  footerText: {
-    color: colors.grey,
-  },
-  signInLink: {
-    color: colors.primary,
-    fontWeight: "bold",
-  },
+  line: { flex: 1, height: 1, backgroundColor: colors.grey, opacity: 0.5 },
+  orText: { marginHorizontal: 10, color: colors.grey },
+  socialText: { color: colors.primary, marginBottom: 15, fontWeight: "600" },
+  socialContainer: { flexDirection: "row", marginBottom: 20 },
+  socialIcon: { marginHorizontal: 10 },
+  footerContainer: { flexDirection: "row", marginBottom: 20 },
+  footerText: { color: colors.grey },
+  signInLink: { color: colors.primary, fontWeight: "bold" },
 });
 
 export default SignupScreen;

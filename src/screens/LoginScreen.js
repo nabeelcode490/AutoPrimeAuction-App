@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// 1. Added sendPasswordResetEmail to imports
 import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -23,6 +22,9 @@ import colors from "../constants/colors";
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  // 1. New State for Visibility
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const onLoginPressed = async () => {
@@ -36,7 +38,7 @@ const LoginScreen = ({ navigation }) => {
     try {
       const userCredential = await signInWithEmailAndPassword(
         auth,
-        email,
+        email.trim().toLowerCase(),
         password
       );
       console.log("Logged in successfully:", userCredential.user.email);
@@ -63,7 +65,6 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  // 2. New Forgot Password Handler
   const onForgotPasswordPressed = async () => {
     if (!email) {
       Alert.alert(
@@ -74,7 +75,7 @@ const LoginScreen = ({ navigation }) => {
     }
 
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, email.trim());
       Alert.alert(
         "Email Sent",
         "A password reset link has been sent to your email."
@@ -89,10 +90,6 @@ const LoginScreen = ({ navigation }) => {
       }
       Alert.alert("Error", message);
     }
-  };
-
-  const onSignUpPressed = () => {
-    navigation.navigate("Signup");
   };
 
   return (
@@ -118,17 +115,23 @@ const LoginScreen = ({ navigation }) => {
           value={email}
           setValue={setEmail}
           keyboardType="email-address"
+          autoCapitalize="none"
         />
 
+        {/* 2. Updated Password Field with Eye Icon Logic */}
         <CustomInput
           iconName="lock-closed-outline"
           placeholder="Password"
           value={password}
           setValue={setPassword}
-          secureTextEntry={true}
+          // If visible is TRUE, secureTextEntry is FALSE (show text)
+          secureTextEntry={!isPasswordVisible}
+          // Icon changes based on state
+          rightIcon={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
+          // Toggle the state when clicked
+          onRightIconPress={() => setIsPasswordVisible(!isPasswordVisible)}
         />
 
-        {/* 3. Connected the onPress event */}
         <TouchableOpacity
           style={styles.forgotPasswordContainer}
           onPress={onForgotPasswordPressed}
@@ -150,7 +153,7 @@ const LoginScreen = ({ navigation }) => {
 
         <View style={styles.footerContainer}>
           <Text style={styles.footerText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={onSignUpPressed}>
+          <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
             <Text style={styles.signUpLink}>Sign Up</Text>
           </TouchableOpacity>
         </View>

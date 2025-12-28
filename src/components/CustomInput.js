@@ -1,5 +1,5 @@
-import { Ionicons } from "@expo/vector-icons"; // Built-in Expo icons
-import { StyleSheet, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 import colors from "../constants/colors";
 
 const CustomInput = ({
@@ -7,12 +7,14 @@ const CustomInput = ({
   placeholder,
   value,
   setValue,
-  secureTextEntry = false, // Default is false (for normal text)
-  keyboardType = "default", // Default keyboard
+  secureTextEntry,
+  rightIcon, // <--- New Prop: Name of the right icon (e.g., "eye")
+  onRightIconPress, // <--- New Prop: What happens when clicked
+  ...props
 }) => {
   return (
     <View style={styles.container}>
-      {/* The Icon on the left */}
+      {/* LEFT ICON */}
       <Ionicons
         name={iconName}
         size={24}
@@ -20,48 +22,51 @@ const CustomInput = ({
         style={styles.icon}
       />
 
-      {/* The Typing Area */}
+      {/* TEXT INPUT */}
       <TextInput
         style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor={colors.grey}
         value={value}
         onChangeText={setValue}
-        secureTextEntry={secureTextEntry} // Hides text if true (for passwords)
-        keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        placeholderTextColor={colors.grey}
+        {...props}
       />
+
+      {/* RIGHT ICON (The Eye) - Only renders if 'rightIcon' is provided */}
+      {rightIcon && (
+        <TouchableOpacity onPress={onRightIconPress} style={styles.rightIcon}>
+          <Ionicons name={rightIcon} size={24} color={colors.grey} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.white,
+    backgroundColor: "white",
     width: "100%",
-    borderColor: "#E8E8E8", // Very light grey border
+    borderColor: "#E8E8E8",
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 15, // Space inside left/right
-    paddingVertical: 12, // Space inside top/bottom
-    marginVertical: 10, // Space between different inputs
-    flexDirection: "row", // Aligns Icon and Text side-by-side
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    marginVertical: 8,
+    flexDirection: "row",
     alignItems: "center",
-
-    // Shadow for iOS
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    // Shadow for Android
-    elevation: 2,
-  },
-  icon: {
-    marginRight: 10, // Space between icon and text
   },
   input: {
     flex: 1, // Takes up remaining space
-    color: colors.text,
+    marginLeft: 10,
     fontSize: 16,
+    color: colors.black,
+  },
+  icon: {
+    marginRight: 5,
+  },
+  rightIcon: {
+    marginLeft: 10, // Spacing from text
   },
 });
 
