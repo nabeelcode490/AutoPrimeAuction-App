@@ -23,7 +23,7 @@ const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/uplo
 const CLOUDINARY_RAW_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`;
 
 // TODO: CHECK YOUR IP ADDRESS! (Ensure this is current)
-const API_BASE_URL = "http://192.168.1.23:3000";
+const API_BASE_URL = "http://192.168.1.20:3000";
 
 const SellCarScreen = ({ navigation }) => {
   // --- FORM STATE ---

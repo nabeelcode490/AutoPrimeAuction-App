@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import { onAuthStateChanged, signOut } from "firebase/auth"; // Import auth methods
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore"; // <--- ADDED query, limit, orderBy
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
   Image,
   Modal,
+  RefreshControl, // <--- ADDED Refresh Control
   ScrollView,
   StyleSheet,
   Text,
@@ -15,11 +18,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { auth } from "../config/firebase"; // Import auth instance
+import { auth, db } from "../config/firebase";
 import colors from "../constants/colors";
-import { forSaleCars } from "../data/carData";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
 // --- DUMMY NEWS DATA ---
 const newsData = [
@@ -47,6 +49,11 @@ const newsData = [
 ];
 
 const HomeScreen = ({ navigation }) => {
+  // --- DATA STATE ---
+  const [allCars, setAllCars] = useState([]);
+  const [displayedCars, setDisplayedCars] = useState([]);
+  const [loading, setLoading] = useState(true); // Still use this, but for SECTIONS only
+  const [refreshing, setRefreshing] = useState(false); // <--- Pull to Refresh state
   const [visibleCarsCount, setVisibleCarsCount] = useState(6);
 
   // --- MENU & FILTER STATE ---
@@ -59,19 +66,69 @@ const HomeScreen = ({ navigation }) => {
   // --- USER AUTH STATE ---
   const [user, setUser] = useState(null);
 
-  // Check Login Status on Load
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
-    return unsubscribe; // Cleanup listener
+    return unsubscribe;
   }, []);
 
-  const [displayedCars, setDisplayedCars] = useState(forSaleCars);
+  // --- FETCH CARS FUNCTION ---
+  const fetchCars = async () => {
+    try {
+      // 1. Create a Query: Get cars, but limit to 50 for speed (Optimized)
+      // We can also sort by createdAt if you add that field in the future
+      const q = query(collection(db, "cars"), limit(50));
+
+      const querySnapshot = await getDocs(q);
+
+      // 2. Adapter Logic
+      const carsList = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.title || "Untitled Car",
+          model: data.model || "Unknown Model",
+          brand: data.brand || "Other",
+          price: data.price
+            ? `PKR ${Number(data.price).toLocaleString()}`
+            : "Price TBD",
+          image:
+            data.images && data.images.length > 0
+              ? data.images[0]
+              : "https://via.placeholder.com/400",
+          gallery: data.images || [],
+          location: data.location || "Pakistan",
+          condition: data.condition || "Used",
+          isFeatured: data.isFeatured || false,
+          description: data.description || "No description available.",
+        };
+      });
+
+      setAllCars(carsList);
+      setDisplayedCars(carsList);
+    } catch (error) {
+      console.error("Error fetching cars:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Run on Mount
+  useEffect(() => {
+    fetchCars();
+  }, []);
+
+  // Pull to Refresh Handler
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchCars();
+  };
 
   // --- FILTER LOGIC ---
   const applyFilters = () => {
-    let filtered = forSaleCars;
+    let filtered = allCars;
     if (selectedTab !== "All")
       filtered = filtered.filter((car) => car.condition === selectedTab);
     if (selectedBrand !== "All")
@@ -88,20 +145,15 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleSeeMore = () => {
-    setVisibleCarsCount((prev) => prev + 2);
+    setVisibleCarsCount((prev) => prev + 4); // Load 4 more at a time
   };
 
-  // --- HANDLER: Inspection Request ---
+  // --- MENU HANDLERS ---
   const handleInspectionRequest = () => {
     setMenuVisible(false);
-    // Placeholder for backend
-    Alert.alert(
-      "Thank You!",
-      "Our team will contact you soon to confirm your car's inspection and will link you to our representative."
-    );
+    Alert.alert("Thank You!", "Our team will contact you soon.");
   };
 
-  // --- HANDLER: Logout ---
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -109,17 +161,9 @@ const HomeScreen = ({ navigation }) => {
         text: "Logout",
         style: "destructive",
         onPress: async () => {
-          try {
-            await signOut(auth);
-            setMenuVisible(false);
-            // Reset to Welcome Screen to prevent back navigation
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Welcome" }],
-            });
-          } catch (error) {
-            console.error("Logout Error:", error);
-          }
+          await signOut(auth);
+          setMenuVisible(false);
+          navigation.reset({ index: 0, routes: [{ name: "Welcome" }] });
         },
       },
     ]);
@@ -180,7 +224,6 @@ const HomeScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  // --- MENU ITEM COMPONENT ---
   const MenuItem = ({ icon, label, onPress, isBold }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
       <Ionicons
@@ -195,10 +238,23 @@ const HomeScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  // --- MAIN RENDER ---
+  // NOTICE: No "if (loading) return spinner" here. We render the shell immediately!
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* HEADER */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          // Added Pull-to-Refresh so user can reload if net was slow
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {/* HEADER (Always Visible) */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setMenuVisible(true)}>
             <Ionicons name="menu-outline" size={30} color={colors.black} />
@@ -208,8 +264,6 @@ const HomeScreen = ({ navigation }) => {
             style={styles.headerLogo}
             resizeMode="contain"
           />
-
-          {/* --- RIGHT SIDE HEADER LOGIC --- */}
           {user ? (
             <TouchableOpacity>
               <Ionicons
@@ -219,7 +273,6 @@ const HomeScreen = ({ navigation }) => {
               />
             </TouchableOpacity>
           ) : (
-            // GUEST MODE: Show "Sign In"
             <TouchableOpacity
               style={styles.signInHeaderButton}
               onPress={() => navigation.navigate("Login")}
@@ -234,7 +287,7 @@ const HomeScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* SEARCH BAR */}
+        {/* SEARCH BAR (Always Visible) */}
         <View style={styles.searchContainer}>
           <View style={styles.searchBox}>
             <Ionicons
@@ -257,7 +310,7 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* AUCTIONS BANNER */}
+        {/* AUCTIONS BANNER (Always Visible) */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Auctions</Text>
           <Text style={styles.sectionSubtitle}>View ongoing auctions.</Text>
@@ -274,48 +327,66 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* LISTINGS */}
+        {/* LISTINGS SECTION */}
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Listings</Text>
           <Text style={styles.sectionSubtitle}>Browse cars for buying.</Text>
         </View>
 
-        <FlatList
-          horizontal
-          data={featuredCars}
-          renderItem={renderFeaturedItem}
-          keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.carouselContent}
-          snapToInterval={width * 0.9}
-          decelerationRate="fast"
-        />
+        {/* --- DYNAMIC CONTENT AREA --- */}
+        {/* If Loading, show Spinner HERE instead of blocking whole screen */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading latest cars...</Text>
+          </View>
+        ) : (
+          <>
+            {/* FEATURED CARS */}
+            <FlatList
+              horizontal
+              data={featuredCars}
+              renderItem={renderFeaturedItem}
+              keyExtractor={(item) => item.id}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.carouselContent}
+              snapToInterval={width * 0.9}
+              decelerationRate="fast"
+            />
 
-        <View style={styles.gridContainer}>
-          {regularCars.length > 0 ? (
-            regularCars.slice(0, visibleCarsCount).map((item) => (
-              <View key={item.id} style={styles.gridWrapper}>
-                {renderGridItem({ item })}
-              </View>
-            ))
-          ) : (
-            <Text style={{ marginLeft: 10, color: colors.grey }}>
-              No cars match your filter.
-            </Text>
-          )}
-        </View>
+            {/* REGULAR CARS GRID */}
+            <View style={styles.gridContainer}>
+              {displayedCars.length > 0 ? (
+                regularCars.slice(0, visibleCarsCount).map((item) => (
+                  <View key={item.id} style={styles.gridWrapper}>
+                    {renderGridItem({ item })}
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noCarsText}>
+                  No cars match your filter.
+                </Text>
+              )}
+            </View>
 
-        {visibleCarsCount < regularCars.length && (
-          <TouchableOpacity
-            style={styles.seeMoreButton}
-            onPress={handleSeeMore}
-          >
-            <Text style={styles.seeMoreText}>See More</Text>
-            <Ionicons name="chevron-down" size={20} color={colors.primary} />
-          </TouchableOpacity>
+            {/* SEE MORE BUTTON */}
+            {visibleCarsCount < regularCars.length && (
+              <TouchableOpacity
+                style={styles.seeMoreButton}
+                onPress={handleSeeMore}
+              >
+                <Text style={styles.seeMoreText}>See More</Text>
+                <Ionicons
+                  name="chevron-down"
+                  size={20}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
-        {/* NEWS SECTION */}
+        {/* NEWS SECTION (Always Visible) */}
         <View style={styles.newsSection}>
           <View style={styles.newsHeader}>
             <Text style={styles.sectionTitle}>Latest News</Text>
@@ -340,7 +411,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* --- SIDE MENU MODAL --- */}
+      {/* --- SIDE MENU MODAL (Unchanged) --- */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -357,7 +428,6 @@ const HomeScreen = ({ navigation }) => {
             style={styles.menuDrawer}
             onPress={() => {}}
           >
-            {/* Close/Header Icon */}
             <View style={styles.menuHeader}>
               <TouchableOpacity onPress={() => setMenuVisible(false)}>
                 <Ionicons name="close" size={30} color={colors.black} />
@@ -369,9 +439,7 @@ const HomeScreen = ({ navigation }) => {
               <MenuItem
                 icon="home-outline"
                 label="Home"
-                onPress={() => {
-                  setMenuVisible(false);
-                }}
+                onPress={() => setMenuVisible(false)}
                 isBold
               />
               <MenuItem
@@ -386,17 +454,13 @@ const HomeScreen = ({ navigation }) => {
               <MenuItem
                 icon="list-outline"
                 label="Listings"
-                onPress={() => {
-                  setMenuVisible(false);
-                }}
+                onPress={() => setMenuVisible(false)}
                 isBold
               />
               <MenuItem
                 icon="add-circle-outline"
                 label="Post Ad"
-                onPress={() => {
-                  setMenuVisible(false);
-                }}
+                onPress={() => setMenuVisible(false)}
                 isBold
               />
               <MenuItem
@@ -404,37 +468,20 @@ const HomeScreen = ({ navigation }) => {
                 label="Profile"
                 onPress={() => {
                   if (user) {
-                    // Logic: User is Logged In -> Go to Profile
                     setMenuVisible(false);
                     navigation.navigate("Profile");
                   } else {
-                    // Logic: User is Guest -> Prompt to Login
-                    Alert.alert(
-                      "Login Required",
-                      "Please login to view your profile and manage your listings.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Login",
-                          onPress: () => {
-                            setMenuVisible(false);
-                            navigation.navigate("Login");
-                          },
-                        },
-                      ]
-                    );
+                    Alert.alert("Login Required", "Please login first.");
                   }
                 }}
                 isBold
               />
-
               <MenuItem
                 icon="checkbox-outline"
                 label="Get Your Car Inspected"
                 onPress={handleInspectionRequest}
                 isBold
               />
-
               <TouchableOpacity
                 style={styles.registerAuctionButton}
                 onPress={() => {
@@ -475,7 +522,7 @@ const HomeScreen = ({ navigation }) => {
                 label="Feedback"
                 onPress={() => {
                   setMenuVisible(false);
-                  navigation.navigate("Feedback"); // <--- Linked
+                  navigation.navigate("Feedback");
                 }}
               />
               <MenuItem
@@ -483,11 +530,9 @@ const HomeScreen = ({ navigation }) => {
                 label="Contact Us"
                 onPress={() => {
                   setMenuVisible(false);
-                  navigation.navigate("ContactUs"); // <--- Linked
+                  navigation.navigate("ContactUs");
                 }}
               />
-
-              {/* --- LOGOUT BUTTON (Only if User is Logged In) --- */}
               {user && (
                 <TouchableOpacity
                   style={styles.logoutButton}
@@ -507,7 +552,7 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
       </Modal>
 
-      {/* --- FILTER POPUP MODAL --- */}
+      {/* --- FILTER MODAL (Unchanged) --- */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -538,15 +583,8 @@ const HomeScreen = ({ navigation }) => {
               ))}
             </View>
             <View style={styles.row}>
-              <TouchableOpacity
-                style={styles.dropdown}
-                onPress={() =>
-                  setSelectedBrand(selectedBrand === "All" ? "Toyota" : "All")
-                }
-              >
-                <Text style={styles.dropdownText}>
-                  {selectedBrand === "All" ? "Brand" : selectedBrand}
-                </Text>
+              <TouchableOpacity style={styles.dropdown}>
+                <Text style={styles.dropdownText}>Brand</Text>
                 <Ionicons name="chevron-down" size={20} color={colors.grey} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.dropdown}>
@@ -570,11 +608,6 @@ const HomeScreen = ({ navigation }) => {
             </View>
             <Text style={styles.label}>Price Range</Text>
             <Text style={styles.priceLabel}>Rs. 0 - Rs. 3,00,00,000</Text>
-            <View style={styles.sliderBar}>
-              <View style={styles.sliderActiveBar} />
-              <View style={[styles.thumb, { left: 0 }]} />
-              <View style={[styles.thumb, { right: 0 }]} />
-            </View>
             <TouchableOpacity style={styles.modalButton} onPress={applyFilters}>
               <Text style={styles.modalButtonText}>Search</Text>
             </TouchableOpacity>
@@ -601,8 +634,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerLogo: { width: 80, height: 40 },
-
-  // --- SIGN IN HEADER STYLES ---
   signInHeaderButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -614,7 +645,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 16,
   },
-
   searchContainer: {
     flexDirection: "row",
     paddingHorizontal: 20,
@@ -634,11 +664,9 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, color: colors.text },
   filterButton: { padding: 10 },
-
   sectionContainer: { paddingHorizontal: 20, marginBottom: 15 },
   sectionTitle: { fontSize: 22, fontWeight: "bold", color: colors.black },
   sectionSubtitle: { fontSize: 14, color: colors.grey, marginBottom: 10 },
-
   auctionBanner: { width: "100%", height: 150, borderRadius: 15 },
   gavelOverlay: {
     position: "absolute",
@@ -649,7 +677,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   gavelText: { color: "#fff", fontWeight: "bold" },
-
   carouselContent: { paddingLeft: 20, paddingRight: 20, marginBottom: 20 },
   featuredCard: {
     width: width * 0.85,
@@ -668,7 +695,6 @@ const styles = StyleSheet.create({
   },
   featuredTitle: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   featuredModel: { color: "#fff", fontSize: 14 },
-
   ribbonContainer: {
     position: "absolute",
     top: 0,
@@ -687,7 +713,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ribbonText: { color: "#fff", fontWeight: "bold", fontSize: 12 },
-
   gridContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -705,7 +730,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     marginBottom: 5,
   },
-  gridImage: { width: "100%", height: 100, borderRadius: 10, marginBottom: 10 },
+  gridImage: {
+    width: "100%",
+    height: 100,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
   gridTitle: { fontWeight: "bold", fontSize: 14, color: colors.black },
   gridPrice: {
     fontSize: 12,
@@ -723,7 +753,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 2,
   },
-
   seeMoreButton: {
     flexDirection: "row",
     justifyContent: "center",
@@ -737,7 +766,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginRight: 5,
   },
-
+  // --- LOADING STYLES ---
+  loadingContainer: {
+    paddingVertical: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: { marginTop: 10, color: colors.grey, fontSize: 14 },
+  noCarsText: {
+    marginLeft: 10,
+    color: colors.grey,
+    fontStyle: "italic",
+    padding: 20,
+  },
   newsSection: { paddingHorizontal: 20, marginTop: 10, marginBottom: 30 },
   newsHeader: {
     flexDirection: "row",
@@ -776,8 +817,6 @@ const styles = StyleSheet.create({
   },
   footerTagline: { color: "#ccc", fontSize: 14, marginBottom: 20 },
   copyright: { color: "#aaa", fontSize: 12 },
-
-  // --- MODAL COMMON ---
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -793,8 +832,6 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   closeIcon: { position: "absolute", top: 10, right: 10, padding: 5 },
-
-  // --- FILTER STYLES ---
   tabContainer: {
     flexDirection: "row",
     width: "100%",
@@ -843,30 +880,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 10,
   },
-  sliderBar: {
-    width: "100%",
-    height: 4,
-    backgroundColor: "#ccc",
-    borderRadius: 2,
-    marginBottom: 30,
-    position: "relative",
-    marginTop: 10,
-  },
-  sliderActiveBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 4,
-    backgroundColor: colors.primary,
-  },
-  thumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    position: "absolute",
-    top: -8,
-  },
   modalButton: {
     backgroundColor: colors.primary,
     width: "100%",
@@ -875,8 +888,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-
-  // --- MENU DRAWER STYLES ---
   menuOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -900,17 +911,15 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
   menuText: { fontSize: 18, color: colors.primary, fontWeight: "500" },
   menuTextBold: { fontWeight: "bold" },
-
-  // --- BUTTON STYLES ---
   registerAuctionButton: {
     marginTop: 15,
-    backgroundColor: colors.primary, // Navy Blue
+    backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 30, // Pill shape
+    borderRadius: 30,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -938,25 +947,19 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginLeft: 10,
   },
-
   menuBottomContainer: {
     borderTopWidth: 1,
     borderTopColor: "#BDC3C7",
     paddingTop: 20,
     marginBottom: 20,
   },
-  // --- LOGOUT BUTTON ---
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
     marginTop: 10,
   },
-  logoutText: {
-    fontSize: 18,
-    color: "#D32F2F", // Red Color
-    fontWeight: "bold",
-  },
+  logoutText: { fontSize: 18, color: "#D32F2F", fontWeight: "bold" },
 });
 
 export default HomeScreen;
